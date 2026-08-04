@@ -1,0 +1,36 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "build": "echo 'No build step required for Node.js backend'",
+    "test:shiprocket": "node test-shiprocket.js",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.13.5",
+    "body-parser": "^1.20.2",
+    "cloudinary": "^2.9.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.4.1",
+    "firebase-admin": "^12.0.0",
+    "multer": "^2.0.2",
+    "node-cache": "^5.1.2",
+    "nodemailer": "^8.0.1",
+    "pdfkit": "^0.17.2",
+    "qrcode": "^1.5.4",
+    "razorpay": "^2.9.6",
+    "sellsathi": "file:.."
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "fast-check": "^4.6.0",
+    "jest": "^30.2.0",
+    "nodemon": "^3.0.1"
+  }
+}

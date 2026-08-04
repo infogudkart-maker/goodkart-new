@@ -1,0 +1,129 @@
+.policy-page {
+    min-height: 80vh;
+    background: #f1f3f6;
+    padding: 2rem 1rem;
+}
+
+.policy-container {
+    max-width: 860px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    padding: 2.5rem 3rem;
+}
+
+.policy-title {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 0.4rem;
+}
+
+.policy-meta {
+    font-size: 0.82rem;
+    color: #94a3b8;
+    margin-bottom: 1.5rem;
+}
+
+.policy-intro {
+    font-size: 0.9rem;
+    color: #475569;
+    line-height: 1.75;
+    margin-bottom: 1rem;
+}
+
+.policy-section {
+    margin-top: 1.75rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #f1f3f6;
+}
+
+.policy-section-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 0.75rem;
+}
+
+.policy-text {
+    font-size: 0.9rem;
+    color: #475569;
+    line-height: 1.75;
+    margin-bottom: 0.5rem;
+}
+
+.policy-text a {
+    color: #3B7CF1;
+    text-decoration: none;
+}
+
+.policy-numlist,
+.policy-bulletlist {
+    font-size: 0.9rem;
+    color: #475569;
+    line-height: 1.75;
+    padding-left: 1.5rem;
+    margin: 0.25rem 0 0.5rem;
+}
+
+.policy-numlist li,
+.policy-bulletlist li {
+    margin-bottom: 0.5rem;
+}
+
+.policy-bulletlist {
+    list-style: disc;
+}
+
+.policy-deflist {
+    margin: 0.25rem 0;
+}
+
+.policy-defitem {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: #475569;
+    line-height: 1.75;
+    margin-bottom: 0.5rem;
+}
+
+.policy-defitem dt {
+    font-weight: 700;
+    color: #1e293b;
+    flex-shrink: 0;
+}
+
+.policy-defitem dd {
+    margin: 0;
+}
+
+.policy-footer {
+    margin-top: 2.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #e2e8f0;
+    text-align: center;
+    font-size: 0.82rem;
+    color: #94a3b8;
+}
+
+@media (max-width: 600px) {
+    .policy-container {
+        padding: 1.5rem 1.25rem;
+    }
+}
+
+.policy-subsection {
+    margin-bottom: 1rem;
+}
+
+.policy-subheading {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 0.3rem;
+}
+
+
+
