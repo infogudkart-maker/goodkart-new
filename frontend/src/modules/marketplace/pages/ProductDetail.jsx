@@ -538,6 +538,7 @@ export default function ProductDetail() {
                     {/* Right: Info & Config */}
                     <ProductInfo
                         product={product}
+                        seller={seller}
                         reviewStats={reviewStats}
                         isSaved={isSaved}
                         toggleWishlist={toggleWishlist}
