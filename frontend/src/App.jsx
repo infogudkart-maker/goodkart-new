@@ -12,6 +12,7 @@ import Trending from '@/modules/marketplace/pages/Trending';
 import CategoryPage from '@/modules/marketplace/pages/CategoryPage';
 import Wishlist from '@/modules/marketplace/pages/Wishlist';
 import FAQ from '@/modules/marketplace/pages/FAQ';
+import ContactUs from '@/modules/marketplace/pages/ContactUs';
 import TermsOfUse from '@/modules/marketplace/pages/TermsOfUse';
 import CancellationReturns from '@/modules/marketplace/pages/CancellationReturns';
 import Privacy from '@/modules/marketplace/pages/Privacy';
@@ -79,6 +80,7 @@ function AppContent() {
           />
           <Route path="/track" element={<OrderTracking />} />
           <Route path="/faq" element={<FAQ />} />
+          <Route path="/contact" element={<ContactUs />} />
           <Route path="/terms-of-use" element={<TermsOfUse />} />
           <Route path="/cancellation-returns" element={<CancellationReturns />} />
           <Route path="/privacy" element={<Privacy />} />

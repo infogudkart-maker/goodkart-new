@@ -2,8 +2,6 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Package, Truck, CheckCircle, FileText, MapPin, Download, XCircle } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/modules/shared/config/firebase';
 import OrderTimeline from '@/modules/shared/components/common/OrderTimeline';
 import ShippingDetailsCard from '@/modules/shared/components/common/ShippingDetailsCard';
 import { mapOrderStatus } from '@/modules/shared/utils/orderUtils';
@@ -20,6 +18,14 @@ export default function OrderTracking() {
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancellationReason, setCancellationReason] = useState('');
     const [customReason, setCustomReason] = useState('');
+    const [manualOrderId, setManualOrderId] = useState('');
+
+    const handleTrackSearch = (e) => {
+        e.preventDefault();
+        if (manualOrderId.trim()) {
+            navigate(`/track?orderId=${encodeURIComponent(manualOrderId.trim())}`);
+        }
+    };
 
     const cancellationReasons = [
         'Changed my mind',
@@ -40,26 +46,27 @@ export default function OrderTracking() {
             }
 
             try {
-                // First, try to find by document ID
-                let orderDoc = await getDoc(doc(db, 'orders', orderId));
+                // Fetch via the backend API (same auth path used elsewhere in this file,
+                // e.g. cancel order). Querying Firestore directly from the client here
+                // was failing silently for test-login sessions / restricted security
+                // rules, even when the order genuinely existed and showed up fine on
+                // the dashboard (which also goes through the backend).
+                const response = await authFetch(`/orders/${encodeURIComponent(orderId)}`);
 
-                if (orderDoc.exists()) {
-                    setOrder({ id: orderDoc.id, ...orderDoc.data() });
+                if (response.status === 404) {
+                    setOrder(null);
+                    return;
+                }
+
+                const data = await response.json();
+                if (data.success && data.order) {
+                    setOrder(data.order);
                 } else {
-                    // If not found by document ID, search by orderId field
-                    const ordersRef = collection(db, 'orders');
-                    const q = query(ordersRef, where('orderId', '==', orderId));
-                    const querySnapshot = await getDocs(q);
-
-                    if (!querySnapshot.empty) {
-                        const doc = querySnapshot.docs[0];
-                        setOrder({ id: doc.id, ...doc.data() });
-                    } else {
-                        setOrder(null);
-                    }
+                    setOrder(null);
                 }
             } catch (error) {
                 console.error('Error fetching order:', error);
+                setOrder(null);
             } finally {
                 setLoading(false);
             }
@@ -106,10 +113,15 @@ export default function OrderTracking() {
             }
 
             if (data.success) {
-                // Refresh order data
-                const orderDoc = await getDoc(doc(db, 'orders', order.id));
-                if (orderDoc.exists()) {
-                    setOrder({ id: orderDoc.id, ...orderDoc.data() });
+                // Refresh order data via the backend API (consistent with initial fetch)
+                try {
+                    const refreshResponse = await authFetch(`/orders/${encodeURIComponent(order.id)}`);
+                    const refreshData = await refreshResponse.json();
+                    if (refreshData.success && refreshData.order) {
+                        setOrder(refreshData.order);
+                    }
+                } catch (refreshError) {
+                    console.error('[CANCEL-TRACK] Failed to refresh order after cancel:', refreshError);
                 }
                 
                 // Show refund information
@@ -151,11 +163,48 @@ export default function OrderTracking() {
         );
     }
 
+    if (!orderId) {
+        return (
+            <div className="container" style={{ padding: '4rem 0', minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.5rem' }}>
+                <Package size={64} className="text-gray-300" />
+                <div style={{ textAlign: 'center' }}>
+                    <h2 style={{ marginBottom: '0.5rem' }}>Track Your Order</h2>
+                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>Enter your Order ID below to check its status.</p>
+                </div>
+                <form onSubmit={handleTrackSearch} style={{ display: 'flex', gap: '0.75rem', width: '100%', maxWidth: '420px' }}>
+                    <input
+                        type="text"
+                        value={manualOrderId}
+                        onChange={(e) => setManualOrderId(e.target.value)}
+                        placeholder="Enter Order ID (e.g. OD1786707...)"
+                        style={{
+                            flex: 1,
+                            padding: '0.75rem 1rem',
+                            borderRadius: '10px',
+                            border: '2px solid var(--border)',
+                            fontSize: '0.95rem'
+                        }}
+                    />
+                    <button type="submit" className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
+                        Track
+                    </button>
+                </form>
+                <button onClick={() => navigate('/dashboard')} className="btn" style={{ background: 'none', color: 'var(--primary)', fontWeight: 600 }}>
+                    Or view all orders in your Dashboard
+                </button>
+            </div>
+        );
+    }
+
     if (!order) {
         return (
             <div className="container" style={{ padding: '4rem 0', minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
                 <Package size={64} className="text-gray-300" />
                 <h2>Order not found</h2>
+                <p className="text-muted" style={{ fontSize: '0.9rem' }}>We couldn't find an order matching "{orderId}".</p>
+                <button onClick={() => navigate('/track')} className="btn" style={{ background: 'none', color: 'var(--primary)', fontWeight: 600 }}>
+                    Try another Order ID
+                </button>
                 <button onClick={() => navigate('/dashboard')} className="btn btn-primary">
                     Go to Dashboard
                 </button>
@@ -725,6 +774,3 @@ export default function OrderTracking() {
         </div>
     );
 }
-
-
-
