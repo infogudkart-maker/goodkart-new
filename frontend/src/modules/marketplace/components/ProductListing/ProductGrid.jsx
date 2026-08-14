@@ -76,7 +76,7 @@ export default function ProductGrid({
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: idx * 0.05 }}
-                                    key={p.id}
+                                    key={`${p.id}-${viewMode}`}
                                     className="product-card-premium glass-card"
                                     onClick={() => {
                                         const recentlyViewed = JSON.parse(localStorage.getItem('recentlyViewed') || '[]');

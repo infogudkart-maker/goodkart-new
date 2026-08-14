@@ -72,7 +72,7 @@ export default function Footer() {
                             <h4 style={{ fontWeight: 800, marginBottom: '1.5rem' }}>Marketplace</h4>
                             <ul style={{ listStyle: 'none' }} className="flex flex-col gap-3">
                                 <li><Link to="/products" className="text-muted" style={{ textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>All Products</Link></li>
-                                <li><Link to="/categories" className="text-muted" style={{ textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>Categories</Link></li>
+                                <li><Link to="/products" className="text-muted" style={{ textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>Categories</Link></li>
                                 <li><Link to="/track" className="text-muted" style={{ textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>Track Order</Link></li>
                             </ul>
                         </div>
@@ -189,7 +189,3 @@ export default function Footer() {
         </>
     );
 }
-
-
-
-
