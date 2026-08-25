@@ -1,8 +1,44 @@
 import { auth } from '@/modules/shared/config/firebase';
 
-export const API_BASE = import.meta.env.PROD
-    ? (import.meta.env.VITE_API_BASE_URL || 'https://sellsathi-refactored.onrender.com')
-    : 'http://localhost:5000';
+// Always prefer the deployed backend URL from .env when one is set — this
+// is what makes `npm run dev` on your own machine work out of the box,
+// since there's no local backend server running on port 5000. Previously
+// this only applied in production builds; in dev it fell straight to
+// localhost:5000 regardless of .env, so every API call sat there waiting
+// on a server that was never running (and, depending on your firewall,
+// that can hang far longer than an instant "connection refused" — which
+// is what "taking so much time to load" was actually caused by).
+// If you DO want to run the backend locally, just leave VITE_API_BASE_URL
+// unset (or comment it out) in your local .env and it'll fall back to
+// localhost:5000 like before.
+export const API_BASE =
+    import.meta.env.VITE_API_BASE_URL ||
+    (import.meta.env.PROD ? 'https://sellsathi-refactored.onrender.com' : 'http://localhost:5000');
+
+/**
+ * `fetch` with a hard timeout, so a stalled request (dead port, silent
+ * firewall drop, a cold-starting Render backend that never comes back)
+ * fails with a clear error instead of hanging the caller — and the UI —
+ * forever. Plain `fetch` has no built-in timeout at all.
+ *
+ * @param {string} url
+ * @param {RequestInit} options - standard fetch options
+ * @param {number} timeoutMs - default 25s (covers a Render free-tier cold start)
+ */
+export async function fetchWithTimeout(url, options = {}, timeoutMs = 25000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s: ${url}`);
+        }
+        throw err;
+    } finally {
+        clearTimeout(timer);
+    }
+}
 
 /**
  * Authenticated fetch wrapper.

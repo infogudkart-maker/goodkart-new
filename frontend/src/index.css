@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import './styles/design-system.css';
 @import './styles/ux-enhancements.css';
 
@@ -31,29 +31,13 @@
   --radius-full: 9999px;
   --brand: #3B7CF1;
   --brand-hover: #3B7CF1;
-  --font-body: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-display: 'Outfit', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: var(--font-body);
-}
-
-/* Catchy display font for anything that should grab attention —
-   headings, section titles, and the brand name — while body copy
-   stays on Inter for readability. */
-h1, h2, h3, h4,
-.brand-logo,
-.hero-content h1,
-.hero-badge,
-.header-info h2,
-.section-title,
-.btn-modern {
-  font-family: var(--font-display);
-  letter-spacing: -0.01em;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 body {
@@ -805,7 +789,7 @@ h4 {
   font-size: 0.85rem !important;
   cursor: pointer !important;
   min-width: 150px !important;
-  font-family: var(--font-body) !important;
+  font-family: 'Inter', sans-serif !important;
   font-weight: 500 !important;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E") !important;
   background-repeat: no-repeat !important;
@@ -845,7 +829,7 @@ h4 {
 }
 
 .react-datepicker {
-  font-family: var(--font-body) !important;
+  font-family: 'Inter', sans-serif !important;
   border: 2px solid var(--primary) !important;
   border-radius: 16px !important;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;

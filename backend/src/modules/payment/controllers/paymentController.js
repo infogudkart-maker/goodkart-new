@@ -4,8 +4,7 @@ const razorpay = require('../../../config/razorpay');
 const crypto = require('crypto');
 const invoiceService = require('../../../shared/services/invoiceService');
 const emailService = require('../../../shared/services/emailService');
-
-const delhiveryService = require('../../../shared/services/delhiveryService');
+const shiprocketService = require('../../../shared/services/shiprocketService');
 const { reduceStock } = require('../../../utils/stockUtils');
 
 /**
@@ -29,7 +28,7 @@ const createOrder = async (req, res) => {
 
 /**
  * Process post-order tasks in the background.
- * This prevents HTTP timeouts during long operations like PDF generation or API calls.
+ * This prevents HTTP timeouts during long operations like PDF generation or Shiprocket API calls.
  */
 const processPostOrderTasks = async (orderData, orderRef) => {
     try {
@@ -37,14 +36,11 @@ const processPostOrderTasks = async (orderData, orderRef) => {
 
         // 1. Generate Invoice & Send Emails
         try {
-            const invoiceResult = await invoiceService.generateInvoice({ ...orderData, documentId: orderRef.id });
-            const invoiceUrl = typeof invoiceResult === 'object' ? invoiceResult.invoiceUrl : invoiceResult;
-            const pdfBuffer = typeof invoiceResult === 'object' ? invoiceResult.pdfBuffer : null;
-
+            const invoiceUrl = await invoiceService.generateInvoice({ ...orderData, documentId: orderRef.id });
             await orderRef.update({ invoiceGenerated: true, invoiceUrl: invoiceUrl });
             
             if (orderData.email) {
-                emailService.sendOrderConfirmation(orderData.email, { ...orderData, documentId: orderRef.id }, invoiceUrl, pdfBuffer)
+                emailService.sendOrderConfirmation(orderData.email, { ...orderData, documentId: orderRef.id }, invoiceUrl)
                     .catch(err => console.error('[Background] Confirmation email error:', err));
             }
             
@@ -55,24 +51,23 @@ const processPostOrderTasks = async (orderData, orderRef) => {
             console.error("[Background] Invoice/Email logic error:", invoiceErr.message);
         }
 
-        // 2. Handle Shipment & AWB Generation via Delhivery
+        // 2. Handle Shiprocket Shipment
         try {
-            console.log("Routing shipment to Delhivery Service...");
-            const delhiveryResult = await delhiveryService.createShipment({ ...orderData, orderId: orderData.orderId });
-
-            if (delhiveryResult && delhiveryResult.success) {
-                // Delhivery returns waybill and refnum
-                await orderRef.update({
-                    delhiveryOrderId: delhiveryResult.refnum ? String(delhiveryResult.refnum) : null,
-                    awbNumber: delhiveryResult.waybill ? String(delhiveryResult.waybill) : 'Pending',
-                    delhiveryCreatedAt: admin.firestore.FieldValue.serverTimestamp()
+            const shipmentResult = await shiprocketService.createShipment({ ...orderData, orderId: orderData.orderId });
+            if (shipmentResult.success) {
+                await orderRef.update({ 
+                    shiprocketOrderId: shipmentResult.shiprocketOrderId, 
+                    shipmentId: shipmentResult.shipmentId, 
+                    awbNumber: shipmentResult.awbNumber, 
+                    courierName: shipmentResult.courierName,
+                    courierRate: shipmentResult.courierRate || null,
+                    actualShippingCharge: shipmentResult.courierRate || null,
+                    estimatedDeliveryDays: shipmentResult.estimatedDeliveryDays || null,
+                    shiprocketCreatedAt: admin.firestore.FieldValue.serverTimestamp() 
                 });
-                console.log(`[Background] Delhivery AWB assigned: ${delhiveryResult.waybill}`);
-            } else {
-                console.error("Delhivery order creation failed:", delhiveryResult?.error);
             }
-        } catch (shippingErr) {
-            console.error("DELHIVERY SERVICE CRASH:", shippingErr);
+        } catch (shiprocketErr) {
+            console.error("[Background] Shiprocket logic error:", shiprocketErr.message);
         }
 
         // 3. Reduce stock atomically
@@ -119,21 +114,6 @@ const verifyPayment = async (req, res) => {
             status: "Processing", createdAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
-        if (sellerId) {
-            const sellerDoc = await db.collection("users").doc(sellerId).get();
-            if (sellerDoc.exists) {
-                const sData = sellerDoc.data();
-                orderData.sellerAddress = {
-                    addressLine: sData.pickupAddress || sData.shopAddress || sData.address || "Seller Address",
-                    city: sData.city || "Hubli",
-                    state: sData.state || "Karnataka",
-                    pincode: sData.pincode || "580020"
-                };
-                orderData.sellerPhone = sData.phone || "9999999999";
-                orderData.businessName = sData.shopName || orderData.businessName || "Seller Shop";
-            }
-        }
-
         const orderRef = await db.collection("orders").add(orderData);
 
         // START BACKGROUND TASKS - use setImmediate for true non-blocking
@@ -177,21 +157,6 @@ const codOrder = async (req, res) => {
             status: "Processing",
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         };
-
-        if (resolvedSellerId) {
-            const sellerDoc = await db.collection("users").doc(resolvedSellerId).get();
-            if (sellerDoc.exists) {
-                const sData = sellerDoc.data();
-                orderData.sellerAddress = {
-                    addressLine: sData.pickupAddress || sData.shopAddress || sData.address || "Seller Address",
-                    city: sData.city || "Hubli",
-                    state: sData.state || "Karnataka",
-                    pincode: sData.pincode || "580020"
-                };
-                orderData.sellerPhone = sData.phone || "9999999999";
-                orderData.businessName = sData.shopName || orderData.businessName || "Seller Shop";
-            }
-        }
 
         const orderRef = await db.collection("orders").add(orderData);
 
