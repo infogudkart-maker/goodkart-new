@@ -124,11 +124,16 @@ export default function ProductListing() {
         const itemName = params.get('item');
 
         if (searchQuery) {
-            result = result.filter(p =>
-                (p.name && p.name.toLowerCase().includes(searchQuery)) ||
-                (p.category && p.category.toLowerCase().includes(searchQuery)) ||
-                (p.subCategory && p.subCategory.toLowerCase().includes(searchQuery))
-            );
+            // Match every word in the query (in any order/position), not just
+            // an exact phrase — so "pink saree" finds "Pink Floral ... Saree".
+            const searchTokens = searchQuery.split(/\s+/).filter(Boolean);
+            result = result.filter(p => {
+                const haystack = [p.name, p.category, p.subCategory, p.description, ...(p.tags || [])]
+                    .filter(Boolean)
+                    .join(' ')
+                    .toLowerCase();
+                return searchTokens.every(token => haystack.includes(token));
+            });
         }
 
         if (selectedCategory !== 'All') {

@@ -199,8 +199,11 @@ export default function Home() {
             />
 
             {[
-                { title: "Featured Products", subtitle: "Our top picks for you", groupedData: groupedFeatured, bg: "#F8F9FA" },
-                { title: "Latest Releases", subtitle: "Stay ahead with the newest additions", groupedData: groupedLatest, bg: "#FFFFFF" }
+                /* "New Arrivals" moved above "Featured Products" per request — this reuses the
+                   same newest-first product grouping that previously powered the bottom
+                   "Latest Releases" section, just relabeled and repositioned. */
+                { title: "New Arrivals", subtitle: "Fresh picks just added to the store", groupedData: groupedLatest, bg: "#F8F9FA" },
+                { title: "Featured Products", subtitle: "Our top picks for you", groupedData: groupedFeatured, bg: "#FFFFFF" }
             ].map((sec, idx) => (
                 <ProductSection 
                     key={idx}
