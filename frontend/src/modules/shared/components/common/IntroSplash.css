@@ -1,237 +1,75 @@
-/* Full-screen boot splash: rabbit hops in, leaps into the cart, settles
-   into the GoodKart logo + tagline, then fades away. Scoped under
-   .intro-splash so nothing here can leak into the rest of the app.
-   Total runtime is intentionally tight (~2s) — a boot splash should read
-   instantly, not add a delay to every page load. */
+/* Full-screen boot splash: plays the real reference video (rabbit hop -> cart
+   -> bag-icon morph) muted and once, then hands off to our own HTML
+   wordmark + tagline (guaranteed correct "Goodkart" spelling) before fading
+   away. Scoped under .intro-splash so nothing here can leak into the rest
+   of the app.
+
+   The video's own background is a near-white grey (~#EDEDED); the splash
+   background matches it so the letterboxed edges around the video (object-fit:
+   contain) are invisible and the cut to the logo reveal has no visible seam. */
 
 .intro-splash {
     position: fixed;
     inset: 0;
     z-index: 999999;
-    background: #F5F4F1;
+    background: #EDEDED;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    /* Fading the background (not the whole overlay's opacity) means any
+       child that needs to stay fully visible while the overlay clears —
+       the docking logo icon — isn't dragged down to transparent with it. */
+    transition: background-color 0.3s ease-in;
 }
 
 .intro-splash--exit {
-    animation: introOverlayFadeOut 0.3s ease-in forwards;
+    background-color: transparent;
 }
 
-@keyframes introOverlayFadeOut {
-    from { opacity: 1; }
-    to { opacity: 0; }
-}
-
+/* Sized for the video's native 16:9 aspect ratio; scales down to fit small
+   viewports while never exceeding the video's own resolution. */
 .intro-stage {
     position: relative;
-    width: min(92vw, 560px);
-    height: min(52vw, 300px);
+    width: min(100vw, 177.78vh, 1280px);
+    aspect-ratio: 16 / 9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-/* ---------- sparkles ---------- */
-.intro-sparkle {
-    position: absolute;
-    width: 14px;
-    height: 14px;
-    background: #ffffff;
-    clip-path: polygon(50% 0%, 63% 37%, 100% 50%, 63% 63%, 50% 100%, 37% 63%, 0% 50%, 37% 37%);
-    opacity: 0;
-    animation: introSparkleTwinkle 1.4s ease-in-out infinite;
-}
-.intro-sparkle--1 { top: 18%; left: 10%; animation-delay: 0.1s; }
-.intro-sparkle--2 { bottom: 14%; right: 8%; width: 10px; height: 10px; animation-delay: 0.5s; }
-.intro-sparkle--3 { top: 12%; right: 16%; width: 8px; height: 8px; animation-delay: 0.8s; }
-
-@keyframes introSparkleTwinkle {
-    0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
-    50% { opacity: 0.9; transform: scale(1) rotate(20deg); }
-}
-
-/* ---------- rabbit ---------- */
-.intro-rabbit-outer {
-    position: absolute;
-    top: 58%;
-    left: -22%;
-    width: 21%;
-    min-width: 92px;
-    aspect-ratio: 947 / 787;
-    transform: translate(-50%, -50%);
-}
-
-.intro-rabbit-outer--run {
-    animation: introRunAcross 0.55s cubic-bezier(0.33, 0, 0.2, 1) forwards;
-}
-
-.intro-rabbit-outer--leap {
-    animation: introLeapArc 0.22s cubic-bezier(0.45, 0, 0.55, 1) forwards;
-}
-
-@keyframes introRunAcross {
-    from { left: -22%; top: 58%; }
-    to { left: 44%; top: 58%; }
-}
-
-@keyframes introLeapArc {
-    0% { left: 44%; top: 58%; }
-    55% { left: 58%; top: 22%; }
-    100% { left: 68%; top: 42%; }
-}
-
-.intro-rabbit-inner {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    animation: introHopBounce 0.28s ease-in-out infinite;
-}
-
-@keyframes introHopBounce {
-    0%, 100% { transform: translateY(0) scaleY(1); }
-    35% { transform: translateY(-22%) scaleY(1.04); }
-    75% { transform: translateY(0) scaleY(0.94); }
-}
-
-/* The source PNG is a flat silhouette; every layer below reuses it as an
-   alpha mask (so nothing ever spills outside the rabbit's outline). Shading
-   is done with soft blended gradients rather than flat hard-edged color
-   patches per body part — those read as pasted-on stickers with visible
-   seams; a diagonal light-to-dark base plus a soft highlight/shadow blend
-   gives the same body an actual sense of light and volume. */
-.intro-rabbit-layer {
+/* Positioned absolutely (rather than laid out inline by .intro-stage's own
+   flex) so the video and the logo group can occupy the exact same spot and
+   cross-fade smoothly instead of one popping in as the other pops out. */
+.intro-video {
     position: absolute;
     inset: 0;
-    mask-image: url(/goodkart-rabbit-runner.png);
-    mask-mode: alpha;
-    mask-size: contain;
-    mask-repeat: no-repeat;
-    mask-position: center;
-    -webkit-mask-image: url(/goodkart-rabbit-runner.png);
-    -webkit-mask-size: contain;
-    -webkit-mask-repeat: no-repeat;
-    -webkit-mask-position: center;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    opacity: 1;
+    transition: opacity 0.5s ease;
 }
 
-.intro-rabbit-base {
-    background: linear-gradient(135deg, #9BC8EA 0%, #6FA0C8 45%, #3E72A0 85%, #2E5A82 100%);
-    filter: drop-shadow(0 6px 8px rgba(24, 0, 173, 0.18));
-}
-
-/* A soft light catching the back/shoulder... */
-.intro-rabbit-highlight {
-    background: radial-gradient(ellipse 50% 38% at 46% 30%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 72%);
-    mix-blend-mode: soft-light;
-}
-
-/* ...and a soft grounding shadow low on the body, where it tucks toward the legs. */
-.intro-rabbit-shadow-under {
-    background: radial-gradient(ellipse 55% 32% at 48% 90%, rgba(10, 15, 40, 0.5) 0%, rgba(10, 15, 40, 0) 68%);
-    mix-blend-mode: multiply;
-}
-
-/* The outer ear tips read darker, fading in smoothly rather than a hard clip edge. */
-.intro-rabbit-ear-tone {
-    background: linear-gradient(200deg, rgba(20, 40, 70, 0) 40%, rgba(20, 40, 70, 0.45) 100%);
-    mix-blend-mode: multiply;
-}
-
-.intro-rabbit-eye {
-    position: absolute;
-    left: 82%;
-    top: 35%;
-    width: 5%;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: #16283A;
-    transform: translate(-50%, -50%);
-}
-
-/* A tiny catchlight gives the eye some life instead of a flat dot. */
-.intro-rabbit-eye-shine {
-    position: absolute;
-    left: 83.3%;
-    top: 33.3%;
-    width: 1.6%;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: #ffffff;
-    opacity: 0.9;
-    transform: translate(-50%, -50%);
-}
-
-.intro-rabbit-nose {
-    position: absolute;
-    left: 93%;
-    top: 45%;
-    width: 3%;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: #16283A;
-    transform: translate(-50%, -50%);
-}
-
-.intro-rabbit-tail {
-    position: absolute;
-    left: 8%;
-    top: 47%;
-    width: 8%;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, #ffffff, #DCEBF7 70%);
-    transform: translate(-50%, -50%);
-}
-
-.intro-dust {
-    position: absolute;
-    bottom: 6%;
-    left: 6%;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: rgba(91, 184, 255, 0.55);
+.intro-video--out {
     opacity: 0;
-    animation: introDustPuff 0.28s ease-out infinite;
-}
-.intro-dust--2 { left: 16%; width: 7px; height: 7px; animation-delay: 0.09s; }
-
-@keyframes introDustPuff {
-    0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
-    30% { opacity: 0.6; }
-    100% { opacity: 0; transform: translate(-16px, 6px) scale(1.3); }
-}
-
-/* ---------- cart ---------- */
-.intro-cart {
-    position: absolute;
-    top: 42%;
-    left: 68%;
-    width: 17%;
-    min-width: 70px;
-    aspect-ratio: 1 / 1;
-    transform: translate(-50%, -50%) scale(0.5);
-    opacity: 0;
-}
-
-.intro-cart--in {
-    animation: introCartPopIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-}
-
-@keyframes introCartPopIn {
-    from { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
-    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
 /* ---------- logo reveal ---------- */
 .intro-logo-group {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 4px;
 }
 
 .intro-logo-icon {
-    width: clamp(84px, 20vw, 132px);
+    width: clamp(130px, 30vw, 210px);
     height: auto;
     object-fit: contain;
     opacity: 0;
@@ -239,37 +77,80 @@
     filter: drop-shadow(0 10px 18px rgba(24, 0, 173, 0.14));
 }
 
+/* Applied (via JS, on the entrance animation's `animationend`) once the
+   fade/scale-in has actually finished — swaps off the animation onto a
+   plain style with the exact same rendered values, well before exit ever
+   touches these properties. A browser won't smoothly animate a property
+   away from a forwards-filled animation if the animation is removed and
+   the value changed in the same update, which is exactly what exit needs
+   to do — settling here first means exit's later change is an ordinary,
+   transitionable one instead of an instant snap. */
+.intro-logo-icon.intro-settled {
+    animation: none;
+    opacity: 1;
+    transform: none;
+}
+
+/* During exit, the icon flies to the real Navbar logo's position instead of
+   fading out with the rest of the overlay — the inline `transform` (set
+   from JS, computed from the real logo's live position) drives where it
+   ends up; this just turns on the transition. Opacity is deliberately left
+   alone: the icon needs to stay fully visible the whole way there. */
+.intro-logo-icon--docking {
+    transition: transform 0.3s ease-in;
+}
+
 .intro-wordmark {
-    margin-top: 6px;
+    margin-top: 10px;
     font-family: 'Inter', sans-serif;
     letter-spacing: -0.5px;
     line-height: 1;
     opacity: 0;
     animation: introTextFadeUp 0.35s ease-out forwards;
-    animation-delay: 0.16s;
+    animation-delay: 0.15s;
 }
 
 .intro-wordmark-good {
-    font-size: clamp(1.6rem, 6vw, 2.4rem);
+    font-size: clamp(2.4rem, 9vw, 3.6rem);
     font-weight: 900;
     color: #1800AD;
 }
 
 .intro-wordmark-kart {
-    font-size: clamp(1.6rem, 6vw, 2.4rem);
+    font-size: clamp(2.4rem, 9vw, 3.6rem);
     font-weight: 400;
     color: #5BB8FF;
 }
 
 .intro-tagline {
+    margin-top: 2px;
     font-family: 'Inter', sans-serif;
-    font-size: clamp(0.7rem, 2vw, 0.85rem);
+    font-size: clamp(0.95rem, 2.8vw, 1.15rem);
     font-weight: 600;
     letter-spacing: 0.3px;
     color: #1800AD;
     opacity: 0;
-    animation: introTextFadeUp 0.35s ease-out forwards;
-    animation-delay: 0.3s;
+    animation: introTextFadeUp 0.4s ease-out forwards;
+    animation-delay: 0.35s;
+}
+
+/* Same settling idea as the icon above — matches each element's own
+   entrance animation's final value exactly, so nothing visibly changes
+   here; it just frees `opacity` up to transition normally later. */
+.intro-wordmark.intro-settled,
+.intro-tagline.intro-settled {
+    animation: none;
+    opacity: 1;
+}
+
+/* The wordmark/tagline don't have anywhere to dock, so on exit they just
+   fade. `animation: none` here too is a defensive fallback in case exit
+   ever fires before settling has happened (e.g. unusually fast timing). */
+.intro-splash--exit .intro-wordmark,
+.intro-splash--exit .intro-tagline {
+    animation: none;
+    opacity: 0;
+    transition: opacity 0.3s ease-in;
 }
 
 @keyframes introLogoFadeIn {
@@ -283,26 +164,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .intro-rabbit-outer--run,
-    .intro-rabbit-outer--leap,
-    .intro-rabbit-inner,
-    .intro-dust,
-    .intro-sparkle {
-        animation: none !important;
-    }
-    /* These fade FROM hidden TO visible — turning the animation off must
-       still leave them visible, not stuck at their 0% (invisible) state. */
-    .intro-cart--in,
+    /* The JS already skips straight to the 'reveal' phase for reduced-motion
+       users (the video phase is never entered), but the fade-in animations
+       below would still add a bit of motion on top of that — turn them off
+       and show the final state immediately. */
     .intro-logo-icon,
     .intro-wordmark,
     .intro-tagline {
         animation: none !important;
         opacity: 1 !important;
-        transform: translate(-50%, -50%) scale(1) !important;
-    }
-    .intro-logo-icon,
-    .intro-wordmark,
-    .intro-tagline {
         transform: none !important;
     }
 }
