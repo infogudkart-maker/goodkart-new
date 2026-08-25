@@ -426,7 +426,7 @@
     width: 100%;
     height: 40px;
     /* extra right padding to make room for the visible Search button and clear icon */
-    padding: 0 96px 0 var(--space-10, 40px);
+    padding: 0 96px 0 52px;
 }
 
 .mega-menu .container {
@@ -832,7 +832,7 @@
 .nav-search input { 
     width: 100%; 
     height: 40px;
-    padding: 0 var(--space-10, 40px) 0 var(--space-10, 40px);
+    padding: 0 var(--space-10, 40px) 0 52px;
     background: var(--gray-50); 
     border: 1.5px solid #E5E7EB;
     border-radius: var(--radius-full, 9999px); 

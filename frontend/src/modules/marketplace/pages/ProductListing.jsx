@@ -21,7 +21,12 @@ export default function ProductListing() {
     const [selectedSubcategories, setSelectedSubcategories] = useState([]);
     const [priceRange, setPriceRange] = useState(200000);
     const [sortBy, setSortBy] = useState('newest');
-    const [stockFilter, setStockFilter] = useState('all'); // New stock filter state
+    const [stockFilter, setStockFilter] = useState('all');
+    const [selectedSizes, setSelectedSizes] = useState([]);
+    const [selectedColors, setSelectedColors] = useState([]);
+    const [selectedMaterials, setSelectedMaterials] = useState([]);
+    const [selectedOccasions, setSelectedOccasions] = useState([]);
+    const [minDiscount, setMinDiscount] = useState(0);
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
@@ -159,20 +164,46 @@ export default function ProductListing() {
             );
         }
 
-        result = result.filter(p => p.price <= priceRange);
+        result = result.filter(p => Number(p.price) <= priceRange);
+
+        const includesValue = (product, values, field, specification) => {
+            if (values.length === 0) return true;
+            const productValue = product[field] ?? product.specifications?.[specification];
+            const productValues = Array.isArray(productValue) ? productValue : [productValue];
+            return values.some(value => productValues.some(item => String(item).toLowerCase() === String(value).toLowerCase()));
+        };
+
+        result = result.filter(p =>
+            includesValue(p, selectedSizes, 'sizes', 'Size') &&
+            includesValue(p, selectedColors, 'colors', 'Color') &&
+            includesValue(p, selectedMaterials, 'materials', 'Material') &&
+            includesValue(p, selectedOccasions, 'occasions', 'Occasion')
+        );
+
+        if (minDiscount > 0) {
+            result = result.filter(p => {
+                const discount = Number(p.discount);
+                if (Number.isFinite(discount) && discount > 0) return discount >= minDiscount;
+                const originalPrice = Number(p.price);
+                const salePrice = Number(p.discountPrice);
+                return originalPrice > 0 && salePrice > 0 &&
+                    ((originalPrice - salePrice) / originalPrice) * 100 >= minDiscount;
+            });
+        }
 
         // Apply stock filter
         if (stockFilter === 'inStock') {
-            result = result.filter(p => p.stock > 0 && p.status !== 'Out of Stock');
+            result = result.filter(p => Number(p.stock) > 0 && p.status !== 'Out of Stock');
         } else if (stockFilter === 'outOfStock') {
-            result = result.filter(p => p.stock === 0 || p.status === 'Out of Stock');
+            result = result.filter(p => Number(p.stock) === 0 || p.status === 'Out of Stock');
         }
 
         if (sortBy === 'priceLow') result.sort((a, b) => a.price - b.price);
         else if (sortBy === 'priceHigh') result.sort((a, b) => b.price - a.price);
 
         setFilteredProducts(result);
-    }, [products, selectedCategory, selectedSubcategories, priceRange, sortBy, stockFilter, location.search]);
+    }, [products, selectedCategory, selectedSubcategories, priceRange, sortBy, stockFilter,
+        selectedSizes, selectedColors, selectedMaterials, selectedOccasions, minDiscount, location.search]);
 
     useEffect(() => {
         const unsubscribe = listenToWishlist((items) => {
@@ -205,7 +236,12 @@ export default function ProductListing() {
         setSelectedSubcategories([]);
         setPriceRange(200000);
         setSortBy('newest');
-        setStockFilter('all'); // Reset stock filter
+        setStockFilter('all');
+        setSelectedSizes([]);
+        setSelectedColors([]);
+        setSelectedMaterials([]);
+        setSelectedOccasions([]);
+        setMinDiscount(0);
         navigate('/products');
     };
 
@@ -226,6 +262,17 @@ export default function ProductListing() {
                         setSortBy={setSortBy}
                         stockFilter={stockFilter}
                         setStockFilter={setStockFilter}
+                        selectedSizes={selectedSizes}
+                        setSelectedSizes={setSelectedSizes}
+                        selectedColors={selectedColors}
+                        setSelectedColors={setSelectedColors}
+                        selectedMaterials={selectedMaterials}
+                        setSelectedMaterials={setSelectedMaterials}
+                        selectedOccasions={selectedOccasions}
+                        setSelectedOccasions={setSelectedOccasions}
+                        minDiscount={minDiscount}
+                        setMinDiscount={setMinDiscount}
+                        products={products}
                         clearAllFilters={clearAllFilters}
                     />
 
@@ -236,7 +283,25 @@ export default function ProductListing() {
                         setViewMode={setViewMode}
                         selectedCategory={selectedCategory}
                         setSelectedCategory={setSelectedCategory}
+                        selectedSubcategories={selectedSubcategories}
+                        setSelectedSubcategories={setSelectedSubcategories}
+                        priceRange={priceRange}
                         setPriceRange={setPriceRange}
+                        stockFilter={stockFilter}
+                        setStockFilter={setStockFilter}
+                        selectedSizes={selectedSizes}
+                        setSelectedSizes={setSelectedSizes}
+                        selectedColors={selectedColors}
+                        setSelectedColors={setSelectedColors}
+                        selectedMaterials={selectedMaterials}
+                        setSelectedMaterials={setSelectedMaterials}
+                        selectedOccasions={selectedOccasions}
+                        setSelectedOccasions={setSelectedOccasions}
+                        minDiscount={minDiscount}
+                        setMinDiscount={setMinDiscount}
+                        sortBy={sortBy}
+                        setSortBy={setSortBy}
+                        clearAllFilters={clearAllFilters}
                         productReviews={productReviews}
                         wishlist={wishlist}
                         toggleWishlist={toggleWishlist}
