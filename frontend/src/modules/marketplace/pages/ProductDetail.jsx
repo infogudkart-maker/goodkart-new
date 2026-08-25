@@ -6,14 +6,14 @@ import { doc, getDoc } from 'firebase/firestore';
 import { addToCart } from '@/modules/shared/utils/cartUtils';
 import { authFetch, API_BASE } from '@/modules/shared/utils/api';
 import { addToWishlist, removeFromWishlist, listenToWishlist } from '@/modules/shared/utils/wishlistUtils';
-import { ArrowRight, Share2, MessageCircle, Facebook, Twitter, Mail, Rss, Heart } from 'lucide-react';
+import { ArrowRight, Share2, MessageCircle, Facebook, Twitter, Mail, Rss } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import LoadingSpinner from '@/modules/shared/components/common/LoadingSpinner';
 import ProductGallery from '../components/ProductDetail/ProductGallery';
 import ProductInfo from '../components/ProductDetail/ProductInfo';
 import ProductReviews from '../components/ProductDetail/ProductReviews';
 import RelatedProducts from '../components/ProductDetail/RelatedProducts';
-import { getProductPricingWithGST, formatPrice } from '@/modules/shared/utils/priceUtils';
+import { getProductPricingWithGST } from '@/modules/shared/utils/priceUtils';
 import { fetchProductReviews, calculateRatingStats } from '@/modules/shared/utils/reviewUtils';
 import { getFrequentlyBoughtTogether, getSimilarProducts } from '@/modules/shared/utils/recommendationUtils';
 
@@ -503,36 +503,6 @@ export default function ProductDetail() {
     const fbtTotalPrice = fbtProducts.reduce((sum, p, i) => fbtSelections[i] ? sum + p.price : sum, 0);
     const fbtTotalCount = Object.values(fbtSelections).filter(Boolean).length;
 
-    const selections = useMemo(() => ({
-        color: selectedColor,
-        size: selectedSize,
-        storage: selectedStorage,
-        memory: selectedMemory,
-        purchaseOption
-    }), [selectedColor, selectedSize, selectedStorage, selectedMemory, purchaseOption]);
-
-    const pricing = useMemo(() => {
-        if (!product) return { finalPrice: 0, strikethroughPrice: 0, showDiscount: false };
-        return getProductPricingWithGST(product, selections);
-    }, [product, selections]);
-
-    const isOutOfStock = product?.stock === 0 || product?.status === 'Out of Stock';
-
-    const currentColorImages = useMemo(() => {
-        if (!product) return [];
-        const hasColorVariants = Object.keys(variantImageMap || {}).length > 0;
-        if (!hasColorVariants) return mainImages?.length > 0 ? mainImages : [product.image || product.imageUrl || '/placeholder-image.jpg'];
-        const colorKey = selectedColor 
-            ? (typeof selectedColor === 'object' ? selectedColor.name : selectedColor)
-            : Object.keys(variantImageMap)[0];
-        const vImgs = variantImageMap[colorKey];
-        if (Array.isArray(vImgs) && vImgs.length > 0) return vImgs;
-        if (vImgs && typeof vImgs === 'string') return [vImgs];
-        return mainImages?.length > 0 ? mainImages : [product.image || product.imageUrl || '/placeholder-image.jpg'];
-    }, [product, selectedColor, variantImageMap, mainImages]);
-
-    const displayImage = variantImageUrl || currentColorImages[activeImageIndex] || currentColorImages[0] || product?.image || product?.imageUrl || mainImages?.[0] || '/placeholder-image.jpg';
-
     if (loading) return <LoadingSpinner fullScreen size="large" message="Loading product details..." />;
     if (!product) return <div className="error-fullscreen"><h2>Oops! Product not found.</h2><button onClick={() => navigate('/')}>Go Home</button></div>;
 
@@ -563,7 +533,6 @@ export default function ProductDetail() {
                         setActiveImageIndex={setActiveImageIndex}
                         selectedColor={selectedColor}
                         setSelectedColor={setSelectedColor}
-                        handleShare={handleShare}
                     />
 
                     {/* Right: Info & Config */}
@@ -620,64 +589,6 @@ export default function ProductDetail() {
                     similarProducts={similarProducts}
                     recentlyViewed={recentlyViewed}
                 />
-            </div>
-
-            {/* Sticky Bottom Action Bar */}
-            <div className="pd-sticky-bottom-bar">
-                <div className="pd-sticky-bar-inner">
-                    <div className="pd-sticky-left-info">
-                        <img 
-                            src={displayImage} 
-                            alt={product.name} 
-                            className="pd-sticky-product-thumb"
-                            onError={(e) => {
-                                const fallback = product.image || product.imageUrl || (Array.isArray(product.images) && product.images[0]);
-                                if (fallback && e.target.src !== fallback) {
-                                    e.target.src = fallback;
-                                }
-                            }} 
-                        />
-                        <div className="pd-sticky-details">
-                            <span className="pd-sticky-prod-name">{product.name}</span>
-                            <div className="pd-sticky-pricing-row">
-                                <span className="pd-sticky-price-final">{formatPrice(pricing.finalPrice)}</span>
-                                {pricing.showDiscount && (
-                                    <span className="pd-sticky-price-mrp">{formatPrice(pricing.strikethroughPrice)}</span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="pd-sticky-right-actions">
-                        {isOutOfStock ? (
-                            <button
-                                type="button"
-                                className="luxury-btn-wishlist-full"
-                                onClick={toggleWishlist}
-                            >
-                                <Heart size={18} fill={isSaved ? "white" : "none"} />
-                                <span>{isSaved ? 'Saved to Wishlist' : 'Add to Wishlist'}</span>
-                            </button>
-                        ) : (
-                            <>
-                                <button
-                                    type="button"
-                                    className="luxury-btn-buy-now pd-sticky-action-btn"
-                                    onClick={handleBuyNow}
-                                >
-                                    BUY IT NOW
-                                </button>
-                                <button
-                                    type="button"
-                                    className="luxury-btn-add-bag pd-sticky-action-btn"
-                                    onClick={handleAddToCart}
-                                >
-                                    ADD TO BAG
-                                </button>
-                            </>
-                        )}
-                    </div>
-                </div>
             </div>
 
             {/* Share Modal */}

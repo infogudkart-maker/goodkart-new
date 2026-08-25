@@ -33,29 +33,13 @@ const getSenderConfig = async () => {
     };
 };
 
-exports.sendOrderConfirmation = async (email, order, invoiceUrl, pdfBufferParam = null) => {
+exports.sendOrderConfirmation = async (email, order, invoiceUrl) => {
     try {
         console.log(`📧 Sending order confirmation email to ${email} for order ${order.orderId}`);
 
         // Get admin configuration and sender config
         const adminConfig = await getAdminConfig();
         const senderConfig = await getSenderConfig();
-
-        let rawUrl = typeof invoiceUrl === 'object' ? invoiceUrl?.invoiceUrl : invoiceUrl;
-        let pdfBuffer = (typeof invoiceUrl === 'object' ? invoiceUrl?.pdfBuffer : null) || pdfBufferParam;
-
-        const attachments = [];
-        if (pdfBuffer && Buffer.isBuffer(pdfBuffer)) {
-            attachments.push({
-                filename: `Invoice-${order.orderId}.pdf`,
-                content: pdfBuffer
-            });
-        } else if (rawUrl) {
-            attachments.push({
-                filename: `Invoice-${order.orderId}.pdf`,
-                path: String(rawUrl)
-            });
-        }
 
         const mailOptions = {
             ...senderConfig,
@@ -99,7 +83,12 @@ exports.sendOrderConfirmation = async (email, order, invoiceUrl, pdfBufferParam 
                     </div>
                 </div>
             `,
-            attachments: attachments
+            attachments: [
+                {
+                    filename: `Invoice-${order.orderId}.pdf`,
+                    path: invoiceUrl
+                }
+            ]
         };
 
         const result = await transporter.sendMail(mailOptions);

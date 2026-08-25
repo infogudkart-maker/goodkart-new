@@ -1,4 +1,6 @@
+import { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import IntroSplash from '@/modules/shared/components/common/IntroSplash';
 import MarketplaceHome from '@/modules/marketplace/pages/Home';
 import ProductListing from '@/modules/marketplace/pages/ProductListing';
 import ProductDetail from '@/modules/marketplace/pages/ProductDetail';
@@ -52,10 +54,29 @@ function AppContent() {
     "/admin"
   ];
 
+  // The boot splash now plays every time you arrive at the home page —
+  // via navigation (back button, a nav link, redirect) or by clicking the
+  // GoodKart logo — not just once per browser tab. Starts true when the
+  // very first page loaded is Home itself.
+  const [showIntro, setShowIntro] = useState(location.pathname === '/');
+  const prevPathRef = useRef(location.pathname);
+
+  useEffect(() => {
+    const prevPath = prevPathRef.current;
+    if (location.pathname === '/' && prevPath !== '/') {
+      setShowIntro(true);
+    }
+    prevPathRef.current = location.pathname;
+  }, [location.pathname]);
+
+  const replayIntro = () => setShowIntro(true);
+  const handleIntroFinish = () => setShowIntro(false);
+
   return (
     <div className="app-container">
       <ScrollToTop />
-      {!isSellerPage && !isAdminPage && <Navbar />}
+      {showIntro && <IntroSplash onFinish={handleIntroFinish} />}
+      {!isSellerPage && !isAdminPage && <Navbar onLogoClick={replayIntro} />}
       <main className="main-content">
         <Routes>
           {/* Marketplace Routes */}

@@ -4,7 +4,7 @@ const cache = require('../../../utils/cache');
 const invoiceService = require('../../../shared/services/invoiceService');
 const emailService = require('../../../shared/services/emailService');
 const { reduceStock, replenishStock } = require('../../../utils/stockUtils');
-const delhiveryService = require('../../../shared/services/delhiveryService');
+const shiprocketService = require('../../../shared/services/shiprocketService');
 
 const ORDERS_CACHE_TTL = 120; // 2 minutes in seconds
 
@@ -28,13 +28,10 @@ const placeOrder = async (req, res) => {
         const fullOrder = { ...orderData, orderId: orderData.orderId || orderId, documentId: orderId };
 
         try {
-            const invoiceResult = await invoiceService.generateInvoice(fullOrder);
-            const invoiceUrl = typeof invoiceResult === 'object' ? invoiceResult.invoiceUrl : invoiceResult;
-            const pdfBuffer = typeof invoiceResult === 'object' ? invoiceResult.pdfBuffer : null;
-
+            const invoiceUrl = await invoiceService.generateInvoice(fullOrder);
             await orderRef.update({ invoiceGenerated: true, invoiceUrl });
             if (orderData.email) {
-                emailService.sendOrderConfirmation(orderData.email, fullOrder, invoiceUrl, pdfBuffer).catch(err => console.error(err));
+                emailService.sendOrderConfirmation(orderData.email, fullOrder, invoiceUrl).catch(err => console.error(err));
             }
             // Notify sellers about the new order
             emailService.notifySellers(fullOrder).catch(err => console.error('[PlaceOrder] Seller notification error:', err));
@@ -186,16 +183,15 @@ const cancelOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: `Cannot cancel order in ${orderData.status} state` });
         }
 
-        // Handle Delhivery cancellation if applicable
-        if (orderData.delhiveryOrderId || orderData.awbNumber) {
+        // Handle Shiprocket cancellation if applicable
+        if (orderData.shiprocketOrderId) {
             try {
-                const waybill = orderData.awbNumber || orderData.delhiveryOrderId;
-                const delhiveryResult = await delhiveryService.cancelOrder(waybill, orderId);
-                if (!delhiveryResult.success) {
-                    console.error("Failed to cancel Delhivery order:", delhiveryResult.error);
+                const shiprocketResult = await shiprocketService.cancelOrder(orderData.shiprocketOrderId, orderId);
+                if (!shiprocketResult.success) {
+                    console.error("Failed to cancel Shiprocket order:", shiprocketResult.error);
                 }
-            } catch (delhiveryErr) {
-                console.error("DELHIVERY SERVICE CRASH:", delhiveryErr);
+            } catch (shiprocketErr) {
+                console.error("SHIPROCKET SERVICE CRASH:", shiprocketErr);
             }
         }
 
@@ -395,10 +391,10 @@ const getShippingLabel = async (req, res) => {
             orderData = orderDoc.data();
         }
 
-        if (!orderData.awbNumber || orderData.awbNumber === 'Pending') {
+        if (!orderData.shipmentId) {
             return res.status(400).json({
                 success: false,
-                message: "AWB must be generated first."
+                message: "Shipment not yet created for this order. AWB must be generated first."
             });
         }
 
@@ -407,7 +403,7 @@ const getShippingLabel = async (req, res) => {
             return res.status(200).json({ success: true, labelUrl: orderData.labelUrl });
         }
 
-        const labelResult = await delhiveryService.getShippingLabel(orderData.awbNumber);
+        const labelResult = await shiprocketService.getShippingLabel([orderData.shipmentId]);
 
         if (labelResult.success && labelResult.labelUrl) {
             // Cache result in Firestore

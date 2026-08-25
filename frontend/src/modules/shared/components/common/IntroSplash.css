@@ -1,0 +1,308 @@
+/* Full-screen boot splash: rabbit hops in, leaps into the cart, settles
+   into the GoodKart logo + tagline, then fades away. Scoped under
+   .intro-splash so nothing here can leak into the rest of the app.
+   Total runtime is intentionally tight (~2s) — a boot splash should read
+   instantly, not add a delay to every page load. */
+
+.intro-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: #F5F4F1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.intro-splash--exit {
+    animation: introOverlayFadeOut 0.3s ease-in forwards;
+}
+
+@keyframes introOverlayFadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+.intro-stage {
+    position: relative;
+    width: min(92vw, 560px);
+    height: min(52vw, 300px);
+}
+
+/* ---------- sparkles ---------- */
+.intro-sparkle {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: #ffffff;
+    clip-path: polygon(50% 0%, 63% 37%, 100% 50%, 63% 63%, 50% 100%, 37% 63%, 0% 50%, 37% 37%);
+    opacity: 0;
+    animation: introSparkleTwinkle 1.4s ease-in-out infinite;
+}
+.intro-sparkle--1 { top: 18%; left: 10%; animation-delay: 0.1s; }
+.intro-sparkle--2 { bottom: 14%; right: 8%; width: 10px; height: 10px; animation-delay: 0.5s; }
+.intro-sparkle--3 { top: 12%; right: 16%; width: 8px; height: 8px; animation-delay: 0.8s; }
+
+@keyframes introSparkleTwinkle {
+    0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+    50% { opacity: 0.9; transform: scale(1) rotate(20deg); }
+}
+
+/* ---------- rabbit ---------- */
+.intro-rabbit-outer {
+    position: absolute;
+    top: 58%;
+    left: -22%;
+    width: 21%;
+    min-width: 92px;
+    aspect-ratio: 947 / 787;
+    transform: translate(-50%, -50%);
+}
+
+.intro-rabbit-outer--run {
+    animation: introRunAcross 0.55s cubic-bezier(0.33, 0, 0.2, 1) forwards;
+}
+
+.intro-rabbit-outer--leap {
+    animation: introLeapArc 0.22s cubic-bezier(0.45, 0, 0.55, 1) forwards;
+}
+
+@keyframes introRunAcross {
+    from { left: -22%; top: 58%; }
+    to { left: 44%; top: 58%; }
+}
+
+@keyframes introLeapArc {
+    0% { left: 44%; top: 58%; }
+    55% { left: 58%; top: 22%; }
+    100% { left: 68%; top: 42%; }
+}
+
+.intro-rabbit-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    animation: introHopBounce 0.28s ease-in-out infinite;
+}
+
+@keyframes introHopBounce {
+    0%, 100% { transform: translateY(0) scaleY(1); }
+    35% { transform: translateY(-22%) scaleY(1.04); }
+    75% { transform: translateY(0) scaleY(0.94); }
+}
+
+/* The source PNG is a flat silhouette; every layer below reuses it as an
+   alpha mask (so nothing ever spills outside the rabbit's outline). Shading
+   is done with soft blended gradients rather than flat hard-edged color
+   patches per body part — those read as pasted-on stickers with visible
+   seams; a diagonal light-to-dark base plus a soft highlight/shadow blend
+   gives the same body an actual sense of light and volume. */
+.intro-rabbit-layer {
+    position: absolute;
+    inset: 0;
+    mask-image: url(/goodkart-rabbit-runner.png);
+    mask-mode: alpha;
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-image: url(/goodkart-rabbit-runner.png);
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+}
+
+.intro-rabbit-base {
+    background: linear-gradient(135deg, #9BC8EA 0%, #6FA0C8 45%, #3E72A0 85%, #2E5A82 100%);
+    filter: drop-shadow(0 6px 8px rgba(24, 0, 173, 0.18));
+}
+
+/* A soft light catching the back/shoulder... */
+.intro-rabbit-highlight {
+    background: radial-gradient(ellipse 50% 38% at 46% 30%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 72%);
+    mix-blend-mode: soft-light;
+}
+
+/* ...and a soft grounding shadow low on the body, where it tucks toward the legs. */
+.intro-rabbit-shadow-under {
+    background: radial-gradient(ellipse 55% 32% at 48% 90%, rgba(10, 15, 40, 0.5) 0%, rgba(10, 15, 40, 0) 68%);
+    mix-blend-mode: multiply;
+}
+
+/* The outer ear tips read darker, fading in smoothly rather than a hard clip edge. */
+.intro-rabbit-ear-tone {
+    background: linear-gradient(200deg, rgba(20, 40, 70, 0) 40%, rgba(20, 40, 70, 0.45) 100%);
+    mix-blend-mode: multiply;
+}
+
+.intro-rabbit-eye {
+    position: absolute;
+    left: 82%;
+    top: 35%;
+    width: 5%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #16283A;
+    transform: translate(-50%, -50%);
+}
+
+/* A tiny catchlight gives the eye some life instead of a flat dot. */
+.intro-rabbit-eye-shine {
+    position: absolute;
+    left: 83.3%;
+    top: 33.3%;
+    width: 1.6%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #ffffff;
+    opacity: 0.9;
+    transform: translate(-50%, -50%);
+}
+
+.intro-rabbit-nose {
+    position: absolute;
+    left: 93%;
+    top: 45%;
+    width: 3%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #16283A;
+    transform: translate(-50%, -50%);
+}
+
+.intro-rabbit-tail {
+    position: absolute;
+    left: 8%;
+    top: 47%;
+    width: 8%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ffffff, #DCEBF7 70%);
+    transform: translate(-50%, -50%);
+}
+
+.intro-dust {
+    position: absolute;
+    bottom: 6%;
+    left: 6%;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(91, 184, 255, 0.55);
+    opacity: 0;
+    animation: introDustPuff 0.28s ease-out infinite;
+}
+.intro-dust--2 { left: 16%; width: 7px; height: 7px; animation-delay: 0.09s; }
+
+@keyframes introDustPuff {
+    0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+    30% { opacity: 0.6; }
+    100% { opacity: 0; transform: translate(-16px, 6px) scale(1.3); }
+}
+
+/* ---------- cart ---------- */
+.intro-cart {
+    position: absolute;
+    top: 42%;
+    left: 68%;
+    width: 17%;
+    min-width: 70px;
+    aspect-ratio: 1 / 1;
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+}
+
+.intro-cart--in {
+    animation: introCartPopIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes introCartPopIn {
+    from { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* ---------- logo reveal ---------- */
+.intro-logo-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+}
+
+.intro-logo-icon {
+    width: clamp(84px, 20vw, 132px);
+    height: auto;
+    object-fit: contain;
+    opacity: 0;
+    animation: introLogoFadeIn 0.4s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
+    filter: drop-shadow(0 10px 18px rgba(24, 0, 173, 0.14));
+}
+
+.intro-wordmark {
+    margin-top: 6px;
+    font-family: 'Inter', sans-serif;
+    letter-spacing: -0.5px;
+    line-height: 1;
+    opacity: 0;
+    animation: introTextFadeUp 0.35s ease-out forwards;
+    animation-delay: 0.16s;
+}
+
+.intro-wordmark-good {
+    font-size: clamp(1.6rem, 6vw, 2.4rem);
+    font-weight: 900;
+    color: #1800AD;
+}
+
+.intro-wordmark-kart {
+    font-size: clamp(1.6rem, 6vw, 2.4rem);
+    font-weight: 400;
+    color: #5BB8FF;
+}
+
+.intro-tagline {
+    font-family: 'Inter', sans-serif;
+    font-size: clamp(0.7rem, 2vw, 0.85rem);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: #1800AD;
+    opacity: 0;
+    animation: introTextFadeUp 0.35s ease-out forwards;
+    animation-delay: 0.3s;
+}
+
+@keyframes introLogoFadeIn {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes introTextFadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .intro-rabbit-outer--run,
+    .intro-rabbit-outer--leap,
+    .intro-rabbit-inner,
+    .intro-dust,
+    .intro-sparkle {
+        animation: none !important;
+    }
+    /* These fade FROM hidden TO visible — turning the animation off must
+       still leave them visible, not stuck at their 0% (invisible) state. */
+    .intro-cart--in,
+    .intro-logo-icon,
+    .intro-wordmark,
+    .intro-tagline {
+        animation: none !important;
+        opacity: 1 !important;
+        transform: translate(-50%, -50%) scale(1) !important;
+    }
+    .intro-logo-icon,
+    .intro-wordmark,
+    .intro-tagline {
+        transform: none !important;
+    }
+}
