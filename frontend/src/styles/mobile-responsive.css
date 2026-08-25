@@ -58,9 +58,56 @@
     font-size: 0.55rem !important;
   }
 
-  /* Search bar */
-  .search-bar {
-    display: none !important;
+  /* Keep the shared navbar usable on narrow screens. */
+  .main-nav {
+    height: auto !important;
+    min-height: 64px;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding: 8px 12px !important;
+  }
+
+  .brand-logo {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 145px;
+    overflow: hidden;
+  }
+
+  .main-nav .btn-seller {
+    order: 1;
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .main-nav .nav-actions {
+    order: 2;
+    flex: 0 0 auto;
+    gap: 6px;
+    height: 38px;
+  }
+
+  .main-nav .icon-btn {
+    width: 38px;
+    height: 38px;
+  }
+
+  .main-nav .nav-search {
+    order: 3;
+    flex: 1 0 100%;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .main-nav .nav-search input {
+    box-sizing: border-box;
+    width: 100%;
+    height: 42px;
+    font-size: 14px;
+    padding-left: 56px;
   }
 
   /* Category navigation */
