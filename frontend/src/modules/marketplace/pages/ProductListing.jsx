@@ -5,26 +5,11 @@ import { auth } from '@/modules/shared/config/firebase';
 import { API_BASE } from '@/modules/shared/utils/api';
 import { addToCart } from '@/modules/shared/utils/cartUtils';
 import { addToWishlist, removeFromWishlist, listenToWishlist } from '@/modules/shared/utils/wishlistUtils';
-import { getProductPricing } from '@/modules/shared/utils/priceUtils';
 import ReviewModal from '@/modules/shared/components/common/ReviewModal';
 import QuickViewModal from '@/modules/shared/components/common/QuickViewModal';
 import { fetchProductReviews } from '@/modules/shared/utils/reviewUtils';
 import FilterSidebar from '../components/ProductListing/FilterSidebar';
 import ProductGrid from '../components/ProductListing/ProductGrid';
-import CategoryTabBar from '../components/ProductListing/CategoryTabBar';
-
-// Reads the effective discount % off a product (handles both computed
-// price-vs-MRP discounts and the pre-set `product.discount` field).
-const getDiscountPercent = (product) => {
-    try {
-        const { discountTag } = getProductPricing(product);
-        if (!discountTag) return 0;
-        const match = discountTag.match(/(\d+)/);
-        return match ? parseInt(match[1], 10) : 0;
-    } catch {
-        return 0;
-    }
-};
 
 export default function ProductListing() {
     const [products, setProducts] = useState([]);
@@ -36,11 +21,6 @@ export default function ProductListing() {
     const [priceRange, setPriceRange] = useState(200000);
     const [sortBy, setSortBy] = useState('newest');
     const [stockFilter, setStockFilter] = useState('all'); // New stock filter state
-    const [selectedSizes, setSelectedSizes] = useState([]);
-    const [selectedColors, setSelectedColors] = useState([]);
-    const [selectedMaterials, setSelectedMaterials] = useState([]);
-    const [selectedOccasions, setSelectedOccasions] = useState([]);
-    const [minDiscount, setMinDiscount] = useState(0);
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
@@ -144,11 +124,16 @@ export default function ProductListing() {
         const itemName = params.get('item');
 
         if (searchQuery) {
-            result = result.filter(p =>
-                (p.name && p.name.toLowerCase().includes(searchQuery)) ||
-                (p.category && p.category.toLowerCase().includes(searchQuery)) ||
-                (p.subCategory && p.subCategory.toLowerCase().includes(searchQuery))
-            );
+            // Match every word in the query (in any order/position), not just
+            // an exact phrase — so "pink saree" finds "Pink Floral ... Saree".
+            const searchTokens = searchQuery.split(/\s+/).filter(Boolean);
+            result = result.filter(p => {
+                const haystack = [p.name, p.category, p.subCategory, p.description, ...(p.tags || [])]
+                    .filter(Boolean)
+                    .join(' ')
+                    .toLowerCase();
+                return searchTokens.every(token => haystack.includes(token));
+            });
         }
 
         if (selectedCategory !== 'All') {
@@ -182,31 +167,11 @@ export default function ProductListing() {
             result = result.filter(p => p.stock === 0 || p.status === 'Out of Stock');
         }
 
-        if (selectedSizes.length > 0) {
-            result = result.filter(p => Array.isArray(p.sizes) && p.sizes.some(s => selectedSizes.includes(s)));
-        }
-
-        if (selectedColors.length > 0) {
-            result = result.filter(p => Array.isArray(p.colors) && p.colors.some(c => selectedColors.includes(c)));
-        }
-
-        if (selectedMaterials.length > 0) {
-            result = result.filter(p => p.specifications?.Material && selectedMaterials.includes(p.specifications.Material));
-        }
-
-        if (selectedOccasions.length > 0) {
-            result = result.filter(p => p.specifications?.Occasion && selectedOccasions.includes(p.specifications.Occasion));
-        }
-
-        if (minDiscount > 0) {
-            result = result.filter(p => getDiscountPercent(p) >= minDiscount);
-        }
-
         if (sortBy === 'priceLow') result.sort((a, b) => a.price - b.price);
         else if (sortBy === 'priceHigh') result.sort((a, b) => b.price - a.price);
 
         setFilteredProducts(result);
-    }, [products, selectedCategory, selectedSubcategories, priceRange, sortBy, stockFilter, selectedSizes, selectedColors, selectedMaterials, selectedOccasions, minDiscount, location.search]);
+    }, [products, selectedCategory, selectedSubcategories, priceRange, sortBy, stockFilter, location.search]);
 
     useEffect(() => {
         const unsubscribe = listenToWishlist((items) => {
@@ -240,11 +205,6 @@ export default function ProductListing() {
         setPriceRange(200000);
         setSortBy('newest');
         setStockFilter('all'); // Reset stock filter
-        setSelectedSizes([]);
-        setSelectedColors([]);
-        setSelectedMaterials([]);
-        setSelectedOccasions([]);
-        setMinDiscount(0);
         navigate('/products');
     };
 
@@ -252,8 +212,6 @@ export default function ProductListing() {
         <div className="listing-wrapper" style={{ background: '#F8F9FA' }}>
             <div className="container">
                 <div className="listing-layout">
-                    <CategoryTabBar selectedCategory={selectedCategory} />
-
                     <FilterSidebar
                         selectedCategory={selectedCategory}
                         setSelectedCategory={setSelectedCategory}
@@ -261,19 +219,10 @@ export default function ProductListing() {
                         setSelectedSubcategories={setSelectedSubcategories}
                         priceRange={priceRange}
                         setPriceRange={setPriceRange}
+                        sortBy={sortBy}
+                        setSortBy={setSortBy}
                         stockFilter={stockFilter}
                         setStockFilter={setStockFilter}
-                        selectedSizes={selectedSizes}
-                        setSelectedSizes={setSelectedSizes}
-                        selectedColors={selectedColors}
-                        setSelectedColors={setSelectedColors}
-                        selectedMaterials={selectedMaterials}
-                        setSelectedMaterials={setSelectedMaterials}
-                        selectedOccasions={selectedOccasions}
-                        setSelectedOccasions={setSelectedOccasions}
-                        minDiscount={minDiscount}
-                        setMinDiscount={setMinDiscount}
-                        products={products}
                         clearAllFilters={clearAllFilters}
                     />
 
@@ -284,25 +233,7 @@ export default function ProductListing() {
                         setViewMode={setViewMode}
                         selectedCategory={selectedCategory}
                         setSelectedCategory={setSelectedCategory}
-                        selectedSubcategories={selectedSubcategories}
-                        setSelectedSubcategories={setSelectedSubcategories}
-                        priceRange={priceRange}
                         setPriceRange={setPriceRange}
-                        stockFilter={stockFilter}
-                        setStockFilter={setStockFilter}
-                        selectedSizes={selectedSizes}
-                        setSelectedSizes={setSelectedSizes}
-                        selectedColors={selectedColors}
-                        setSelectedColors={setSelectedColors}
-                        selectedMaterials={selectedMaterials}
-                        setSelectedMaterials={setSelectedMaterials}
-                        selectedOccasions={selectedOccasions}
-                        setSelectedOccasions={setSelectedOccasions}
-                        minDiscount={minDiscount}
-                        setMinDiscount={setMinDiscount}
-                        sortBy={sortBy}
-                        setSortBy={setSortBy}
-                        clearAllFilters={clearAllFilters}
                         productReviews={productReviews}
                         wishlist={wishlist}
                         toggleWishlist={toggleWishlist}
