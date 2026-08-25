@@ -24,8 +24,8 @@
 
   /* Container Widths */
   --container-max: 1280px;
-  --container-padding: 6px;
-  --container-padding-mobile: 6px;
+  --container-padding: 16px;
+  --container-padding-mobile: 12px;
 
   /* Grid Gaps */
   --grid-gap: 24px;

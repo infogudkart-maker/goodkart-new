@@ -10,6 +10,7 @@ import QuickViewModal from '@/modules/shared/components/common/QuickViewModal';
 import { fetchProductReviews } from '@/modules/shared/utils/reviewUtils';
 import FilterSidebar from '../components/ProductListing/FilterSidebar';
 import ProductGrid from '../components/ProductListing/ProductGrid';
+import CategoryTabBar from '../components/ProductListing/CategoryTabBar';
 
 export default function ProductListing() {
     const [products, setProducts] = useState([]);
@@ -212,6 +213,8 @@ export default function ProductListing() {
         <div className="listing-wrapper" style={{ background: '#F8F9FA' }}>
             <div className="container">
                 <div className="listing-layout">
+                    <CategoryTabBar selectedCategory={selectedCategory} />
+
                     <FilterSidebar
                         selectedCategory={selectedCategory}
                         setSelectedCategory={setSelectedCategory}
