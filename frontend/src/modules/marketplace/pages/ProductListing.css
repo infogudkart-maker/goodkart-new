@@ -1083,7 +1083,7 @@ body.product-listing-page footer {
 .listing-wrapper .card-media img {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
     transition: transform var(--transition-slow, 300ms);
 }
 .listing-wrapper .product-card-premium:hover .card-media img {
@@ -1463,7 +1463,8 @@ body.product-listing-page footer {
         font-size: var(--text-xs, 12px);
     }
     .listing-wrapper .card-media {
-        height: 140px;
+        height: auto;
+        aspect-ratio: 3 / 4;
     }
     .listing-wrapper .product-card-premium {
         max-height: 320px;
