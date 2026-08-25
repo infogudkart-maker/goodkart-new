@@ -2,7 +2,7 @@
 const { admin, db } = require('../../../config/firebase');
 const cache = require('../../../utils/cache');
 const { formatDateDDMMYYYY } = require('../../../utils/dateFormat');
-const shiprocketService = require('../../../shared/services/shiprocketService');
+const delhiveryService = require('../../../shared/services/delhiveryService');
 
 const SELLER_DASH_TTL = 180; // 3 minutes in seconds
 
@@ -173,7 +173,7 @@ const createPickupAddress = async (req, res) => {
             return res.status(400).json({ success: false, message: `Missing required fields: ${missingFields.join(', ')}` });
         }
 
-        const result = await shiprocketService.createPickupAddress(sellerData);
+        const result = await delhiveryService.createPickupAddress(sellerData);
 
         if (result.success) {
             return res.status(200).json({ success: true, message: result.message, pickupId: result.pickupId });

@@ -74,7 +74,10 @@ exports.generateInvoice = async (order) => {
                     };
                     
                     await db.collection('invoices').add(invoiceData);
-                    resolve(invoiceUrl);
+                    resolve({
+                        invoiceUrl: invoiceUrl,
+                        pdfBuffer: pdfBuffer
+                    });
                 } catch (err) {
                     reject(err);
                 }

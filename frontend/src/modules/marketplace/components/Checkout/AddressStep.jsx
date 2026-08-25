@@ -297,6 +297,11 @@ export default function AddressStep({
                                         className={`w-full px-3 py-2 bg-gray-50 border-none rounded-lg text-sm font-medium focus:ring-2 ring-primary/20 transition-all outline-none ${errors.pincode ? 'ring-2 ring-red-500/20' : ''}`}
                                         readOnly={step === 2} />
                                 </div>
+                                <div className="col-span-2">
+                                    <input type="email" name="email" value={shippingAddress.email || ''} onChange={handleAddressChange} placeholder="Email Address (for Invoice & Confirmation Email)"
+                                        className="w-full px-3 py-2 bg-gray-50 border-none rounded-lg text-sm font-medium focus:ring-2 ring-primary/20 transition-all outline-none"
+                                        readOnly={step === 2} />
+                                </div>
                             </div>
                         )}
                         

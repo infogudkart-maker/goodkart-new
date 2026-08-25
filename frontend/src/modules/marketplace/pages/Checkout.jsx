@@ -153,44 +153,46 @@ export default function Checkout() {
     }, []);
 
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged(async (u) => {
+        const loadAddressesForUser = async (u) => {
+            if (!u || !u.uid) return;
             setUser(u);
-            if (u) {
-                setFetchingSavedAddress(true);
-                try {
-                    const res = await authFetch(`/consumer/${u.uid}/addresses`);
-                    const data = await res.json();
-                    const addresses = data.success ? (data.addresses || []) : [];
-                    setSavedAddresses(addresses);
+            setFetchingSavedAddress(true);
+            try {
+                const res = await authFetch(`/consumer/${u.uid}/addresses`);
+                const data = await res.json();
+                const addresses = data.success ? (data.addresses || []) : [];
+                setSavedAddresses(addresses);
 
-                    // Find default shipping address
-                    const defaultShipping = addresses.find(addr => addr.type === 'shipping' && addr.isDefault === true);
-                    // Find default billing address
-                    const defaultBilling = addresses.find(addr => addr.type === 'billing' && addr.isDefault === true);
-                    
-                    // Set shipping address - DON'T auto-select, let user choose from dropdown
-                    if (addresses.length > 0) {
-                        setAddressMode('saved');
-                        // Don't auto-select - leave selectedAddressIndex as null
-                        // User must select from dropdown
-                    } else {
-                        setAddressMode('new');
-                    }
-                    
-                    // Set billing address
-                    if (defaultBilling) {
-                        setBillingAddress(defaultBilling);
-                    } else if (sameAsBilling && defaultShipping) {
-                        // If same as billing is checked, copy shipping to billing
-                        setBillingAddress({ ...defaultShipping, type: 'billing' });
-                    }
-                } catch (error) {
-                    console.error("Error fetching addresses:", error);
+                const defaultShipping = addresses.find(addr => addr.type === 'shipping' && addr.isDefault === true);
+                const defaultBilling = addresses.find(addr => addr.type === 'billing' && addr.isDefault === true);
+                
+                if (addresses.length > 0) {
+                    setAddressMode('saved');
+                } else {
                     setAddressMode('new');
-                } finally {
-                    setFetchingSavedAddress(false);
                 }
+                
+                if (defaultBilling) {
+                    setBillingAddress(defaultBilling);
+                } else if (sameAsBilling && defaultShipping) {
+                    setBillingAddress({ ...defaultShipping, type: 'billing' });
+                }
+            } catch (error) {
+                console.error("Error fetching addresses:", error);
+                setAddressMode('new');
+            } finally {
+                setFetchingSavedAddress(false);
             }
+        };
+
+        let localUser = null;
+        try { localUser = JSON.parse(localStorage.getItem('user')); } catch (e) {}
+        if (localUser && localUser.uid) {
+            loadAddressesForUser(localUser);
+        }
+
+        const unsubscribe = auth.onAuthStateChanged((u) => {
+            if (u) loadAddressesForUser(u);
         });
         return () => unsubscribe();
     }, []);
@@ -458,7 +460,7 @@ export default function Checkout() {
                             const customerInfo = {
                                 firstName: shippingAddress.firstName,
                                 lastName: shippingAddress.lastName,
-                                email: user?.email || '',
+                                email: shippingAddress.email || user?.email || '',
                                 phone: user?.phoneNumber || user?.phone || shippingAddress.phone || '',
                                 shippingAddress: shippingAddress,
                                 billingAddress: finalBillingAddress,
@@ -544,7 +546,7 @@ export default function Checkout() {
                     },
                     prefill: {
                         name: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
-                        email: user?.email || '',
+                        email: shippingAddress.email || user?.email || '',
                         contact: user?.phoneNumber || user?.phone || ''
                     },
                     theme: { color: '#3B7CF1' },
@@ -580,7 +582,7 @@ export default function Checkout() {
             const customerInfo = {
                 firstName: shippingAddress.firstName,
                 lastName: shippingAddress.lastName,
-                email: user?.email || '',
+                email: shippingAddress.email || user?.email || '',
                 phone: user?.phoneNumber || user?.phone || shippingAddress.phone || '',
                 shippingAddress: shippingAddress,
                 billingAddress: finalBillingAddress,
@@ -589,8 +591,10 @@ export default function Checkout() {
                 estimatedShippingCharge: shippingFee // Pass estimated shipping to backend
             };
 
-            const currentUser = auth.currentUser;
-            if (!currentUser) {
+            let localUser = null;
+            try { localUser = JSON.parse(localStorage.getItem('user')); } catch (e) {}
+            const currentUser = auth.currentUser || user || localUser;
+            if (!currentUser || !currentUser.uid) {
                 alert("Please login to place an order");
                 setLoading(false);
                 return;
@@ -713,7 +717,11 @@ export default function Checkout() {
     };
 
     const handleContinue = async () => {
-        if (!auth.currentUser) {
+        let localUser = null;
+        try { localUser = JSON.parse(localStorage.getItem('user')); } catch (e) {}
+        const isLoggedIn = !!(auth.currentUser || user?.uid || (localUser && localUser.uid));
+
+        if (!isLoggedIn) {
             window.dispatchEvent(new Event('openLoginModal'));
             return;
         }
