@@ -8,13 +8,29 @@ import './IntroSplash.css';
 // "Godkart" text ever appears. We cut there and hand off to our own HTML
 // wordmark, which reads correctly ("Goodkart").
 const VIDEO_DURATION_MS = 4000;
-const CROSSFADE_MS = 500;   // video and logo overlap and cross-fade for this long
-// Long enough that the wordmark/tagline's own entrance animations (the
-// slowest, the tagline, finishes at 750ms: 350ms delay + 400ms duration)
-// are always done and "settled" (see settleEntrance below) before exit
-// starts — otherwise their fade-out at exit can't transition smoothly.
-const REVEAL_HOLD = 800;
-const EXIT_DURATION = 300;  // whole overlay fades away
+// The video's last frame (rabbit landing in the cart) and our static
+// reveal icon are two different pieces of artwork — similar idea, but not
+// pixel-matched. Overlapping them in a true cross-fade made that mismatch
+// visible as a brief "double image" while both were partway faded, which
+// read as a glitch rather than a smooth handoff. So this is deliberately
+// NOT an overlap anymore: the video fades out completely on its own first,
+// and only once it's gone does the logo start its own pop-in — two clean,
+// separate fades against the shared background instead of one messy blend.
+const VIDEO_FADE_MS = 250;
+// Counted from the start of 'reveal' (same moment the video starts fading),
+// so it needs to cover: the video's own fade (VIDEO_FADE_MS) + the logo's
+// entrance animations actually finishing — the slowest, the tagline, takes
+// 750ms (350ms delay + 400ms duration) from when the logo group mounts.
+// Comfortable buffer on top so "settled" (see settleEntrance below) always
+// lands before exit fires — otherwise the fade-out at exit can't transition
+// smoothly.
+const REVEAL_HOLD = 1150;
+// Matches IntroSplash.css: the icon flies for 400ms, then the background
+// (which had stayed opaque, hiding the real Navbar underneath) clears in a
+// final 130ms starting at the 320ms mark — 320 + 130 = 450. Keep this in
+// sync with those numbers if either changes, so the splash never unmounts
+// mid-transition.
+const EXIT_DURATION = 450;
 
 const prefersReducedMotion = () => {
     try {
@@ -71,10 +87,10 @@ const pickVideoSrc = () => {
 /**
  * Full-screen splash shown once when the app boots: plays the actual
  * reference video (rabbit hops in, leaps into the cart, cart morphs into
- * the bag icon) muted and once, then cross-fades into the real GoodKart
- * wordmark + tagline before fading out to reveal the site underneath.
- * Falls straight to the static reveal for prefers-reduced-motion, or if
- * the video fails to load for any reason.
+ * the bag icon) muted and once, fades it out, then pops in the real
+ * GoodKart wordmark + tagline before fading out to reveal the site
+ * underneath. Falls straight to the static reveal for prefers-reduced-motion,
+ * or if the video fails to load for any reason.
  */
 export default function IntroSplash({ onFinish }) {
     const reduceMotion = useRef(prefersReducedMotion());
@@ -134,9 +150,25 @@ export default function IntroSplash({ onFinish }) {
 
     useEffect(() => {
         if (phase !== 'reveal') return undefined;
-        // The video keeps rendering (now fading out via CSS) for the first
-        // slice of the reveal phase, overlapping with the logo fading in.
-        const t0 = setTimeout(() => setVideoInDom(false), CROSSFADE_MS);
+        // Video fades out alone first (see the VIDEO_FADE_MS comment above
+        // for why); only once it's actually gone does the logo mount and
+        // start its own entrance animation.
+        const t0 = setTimeout(() => {
+            // Explicitly release the video's decoder resources right as we
+            // remove it, rather than leaving that to whenever the browser
+            // gets around to tearing down the unmounted element — cheap
+            // insurance against a stray hitch right at the handoff.
+            if (videoRef.current) {
+                try {
+                    videoRef.current.pause();
+                    videoRef.current.removeAttribute('src');
+                    videoRef.current.load();
+                } catch {
+                    // best-effort cleanup only
+                }
+            }
+            setVideoInDom(false);
+        }, VIDEO_FADE_MS);
         const t1 = setTimeout(() => {
             // The real Navbar (already mounted underneath the splash) only
             // renders its logo as this exact clickable icon on the home
@@ -175,9 +207,12 @@ export default function IntroSplash({ onFinish }) {
 
     if (phase === 'gone') return null;
 
-    const showLogo = phase === 'reveal' || phase === 'exit';
-    // Still in the DOM (and fading out) for a moment even after the reveal
-    // phase begins — this is what actually produces the cross-fade.
+    // Waits for the video to be fully gone (not just "we're past the video
+    // phase") — see the VIDEO_FADE_MS comment above for why the two never
+    // overlap on screen.
+    const showLogo = (phase === 'reveal' || phase === 'exit') && !videoInDom;
+    // Still in the DOM for a moment into 'reveal' so it can fade out on its
+    // own first — see VIDEO_FADE_MS above.
     const videoFadingOut = videoInDom && phase !== 'video';
     // Once we're exiting and know where the real logo sits, the icon flies
     // there instead of just sitting still while the overlay fades away.
