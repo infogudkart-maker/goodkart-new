@@ -495,8 +495,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
             }
         } catch (err) {
             console.error('Email Login Error:', err);
-            const msgs = { 'auth/wrong-password': 'Incorrect password.', 'auth/operation-not-allowed': 'Email/Password auth not enabled in Firebase.', 'auth/weak-password': 'Password too weak (min 6 chars).', 'auth/email-already-in-use': 'Email already in use.' };
-            setError(msgs[err.code] || err.message || 'Authentication failed.');
+            const msgs = {
+                'auth/invalid-credential': 'Invalid email or password. Please check your details or click Register if you don\'t have an account.',
+                'auth/wrong-password': 'Incorrect password. Please check your password and try again.',
+                'auth/user-not-found': 'No account found with this email. Please click Register to create a new account.',
+                'auth/operation-not-allowed': 'Email/Password auth is not enabled in Firebase Console.',
+                'auth/weak-password': 'Password too weak (minimum 6 characters required).',
+                'auth/email-already-in-use': 'This email is already registered. Please log in instead.'
+            };
+            setError(msgs[err.code] || err.message || 'Authentication failed. Please try again.');
         } finally { setLoading(false); }
     };
 
@@ -594,14 +601,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
             } else setError(data.message || 'Registration failed');
         } catch (err) {
             console.error('Registration Error:', err);
-            const msg = err.code === 'auth/email-already-in-use'
-                ? 'This email is already registered. If you forgot your password, please use Forgot Password or login with other methods.'
+            const msg = err.code === 'auth/invalid-credential'
+                ? 'Invalid credentials provided. If this email is already registered, please try logging in with the correct password.'
+                : err.code === 'auth/email-already-in-use'
+                ? 'This email is already registered. Please login or use phone login.'
                 : err.code === 'auth/weak-password'
                     ? 'The password is too weak. Please use at least 6 characters.'
                     : err.code === 'auth/invalid-email'
                         ? 'The email address is not valid.'
                         : err.code === 'auth/operation-not-allowed'
-                            ? 'Email registration is currently unavailable. Please try Phone login.'
+                            ? 'Email registration is currently disabled in Firebase Console. Please use Phone login or Test Login.'
                             : err.message || 'Registration failed. Please try again.';
             setError(msg);
         }

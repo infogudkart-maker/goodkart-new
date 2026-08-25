@@ -81,7 +81,11 @@ export default function Cart() {
     const total = subtotal;
 
     const handleCheckout = () => {
-        if (!auth.currentUser) {
+        let localUser = null;
+        try { localUser = JSON.parse(localStorage.getItem('user')); } catch (e) {}
+        const isLoggedIn = !!(auth.currentUser || (localUser && localUser.uid));
+
+        if (!isLoggedIn) {
             window.dispatchEvent(new Event('openLoginModal'));
             return;
         }
