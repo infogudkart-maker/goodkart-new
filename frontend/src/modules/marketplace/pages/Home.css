@@ -1,3 +1,29 @@
+    /* ============================================================
+    MAIN PAGE FONT SYSTEM
+    Single family everywhere: 'Manrope' (already set globally in
+       index.css on the `*` selector) — no second family is
+       introduced, since mixing families is what usually causes an
+       "inconsistent" look. Uniformity instead comes from always
+       pulling size/weight from the shared scale in
+       styles/design-system.css instead of one-off px values:
+         - Section titles (.title-modern, .header-info h2)
+             -> var(--text-3xl, 30px) / var(--font-extrabold, 800)
+         - Category group headers (.category-group-header h3)
+             -> var(--text-2xl, 24px) / var(--font-bold, 700)
+         - Section subtitles (.header-info p)
+             -> var(--text-lg, 18px) / var(--font-normal, 400)
+         - Product card titles (.card-info .title)
+             -> var(--text-sm, 14px) / var(--font-semibold, 600)
+         - Prices (.current-price)
+             -> var(--text-lg, 18px) / var(--font-extrabold, 800)
+         - Buttons/links (.btn-modern, .view-more)
+             -> var(--text-base, 16px) / var(--font-semibold, 600)
+       Previously `.header-info h2` (28px, hardcoded) and
+       `.title-modern` (30px, via var) both matched the same <h2>
+       and disagreed — that mismatch is fixed below by making both
+       resolve to the same var.
+       ============================================================ */
+
     /* Professional Grid System - 5 columns desktop, compact spacing */
     .product-uniform-grid { 
         display: grid; 
@@ -175,12 +201,12 @@
         line-height: 1.2;
     }
     .card-info .sub-category { 
-        font-size: var(--text-sm, 14px); 
+        font-size: var(--text-sm, 14px);
         font-weight: var(--font-semibold, 600); 
         color: var(--text-secondary); 
     }
-    .card-info .title { 
-        font-size: 13px; 
+    .card-info .title {
+        font-size: var(--text-sm, 14px);
         font-weight: var(--font-semibold, 600); 
         margin: 3px 0 4px; 
         color: var(--text-primary); 
@@ -224,7 +250,7 @@
         min-height: 28px;
     }
     .current-price { 
-        font-size: 18px; 
+        font-size: var(--text-lg, 18px);
         font-weight: var(--font-extrabold, 800); 
         color: var(--text-primary); 
     }
@@ -234,7 +260,7 @@
         color: var(--text-tertiary); 
         font-weight: var(--font-semibold, 600); 
     }
-    
+
     .add-to-cart-simple { 
         width: 40px;
         height: 40px;
@@ -354,16 +380,26 @@
         transform: translateX(4px);
     }
     
-    /* Container - Max Width 1280px */
-    .container {
+    /* Container - Max Width 1280px
+       Scoped with `.home-wrapper` so this padding fix only ever applies to the
+       main page's sections (HeroCarousel, CategoryShowcase, ProductSection all
+       render inside `<div className="home-wrapper">` in Home.jsx) and can't
+       leak onto other pages that also use the generic `.container` class. */
+    .home-wrapper .container {
         max-width: var(--container-max, 1280px);
         margin: 0 auto;
-        padding: 0 3px;
+        padding: 0 32px;
+    }
+
+    @media (max-width: 1024px) {
+        .home-wrapper .container {
+            padding: 0 24px;
+        }
     }
     
     @media (max-width: 768px) {
-        .container {
-            padding: 0 3px;
+        .home-wrapper .container {
+            padding: 0 16px;
         }
     }
     
@@ -464,23 +500,24 @@
     .nav-btn {
         width: 48px;
         height: 48px;
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(17, 24, 39, 0.45);
         backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.3);
+        border: 1.5px solid rgba(255, 255, 255, 0.7);
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         color: #FFFFFF;
         cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
         transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
     }
     
     .nav-btn:hover {
-        background: rgba(255, 255, 255, 0.4);
-        border-color: rgba(255, 255, 255, 0.6);
+        background: rgba(59, 124, 241, 0.85);
+        border-color: #FFFFFF;
         transform: scale(1.15);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
     }
     
     /* Carousel Dots */
@@ -528,13 +565,14 @@
     }
     
     .header-info h2 {
-        font-size: 28px;
+        font-size: var(--text-3xl, 30px);
         font-weight: var(--font-extrabold, 800);
         margin-bottom: 4px;
     }
     
     .header-info p {
         font-size: var(--text-lg, 18px);
+        font-weight: var(--font-normal, 400);
         color: var(--text-secondary);
     }
     

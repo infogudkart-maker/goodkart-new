@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { ShoppingCart, User, Search, LogOut, ChevronDown, Heart, ShoppingBag, Menu } from 'lucide-react';
+import { ShoppingCart, User, Search, LogOut, ChevronDown, Heart, ShoppingBag, Menu, X } from 'lucide-react';
 import AuthModal from '@/modules/auth/components/AuthModal';
 import { collection, getDocs, query, limit } from 'firebase/firestore';
 import { db, auth } from '@/modules/shared/config/firebase';
@@ -10,26 +10,26 @@ import { MAIN_CATEGORIES, SPECIAL_CATEGORIES, SUBCATEGORIES, ALL_CATEGORIES } fr
 import { fetchWithCache } from '@/modules/shared/utils/firestoreCache';
 import NavbarMegaMenu from './NavbarMegaMenu';
 import CategorySidebar from './CategorySidebar';
-import { authFetch } from '@/modules/shared/utils/api';
+import { authFetch, API_BASE } from '@/modules/shared/utils/api';
 import CartNotification from '@/modules/shared/components/common/CartNotification';
 import WishlistNotification from '@/modules/shared/components/common/WishlistNotification';
 import './Navbar.css';
 
 function GoodkartLogo() {
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img src="/goodkart-logo.png" alt="" style={{ height: '60px', width: '60px', objectFit: 'contain' }} />
-            <span style={{ fontFamily: 'Inter, sans-serif', lineHeight: 1, letterSpacing: '-0.5px', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <img src="/goodkart-logo.png" alt="Goodkart logo" style={{ height: '64px', width: 'auto', objectFit: 'contain' }} />
+            <span style={{ fontFamily: "'Outfit', 'Manrope', sans-serif", lineHeight: 1, letterSpacing: '-0.5px', display: 'flex', flexDirection: 'column' }}>
                 <span>
-                    <span style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span style={{ fontSize: '2rem', fontWeight: 400, color: '#5BB8FF' }}>kart</span>
+                    <span style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span style={{ fontSize: '2rem', fontWeight: 700, color: '#5BB8FF' }}>kart</span>
                 </span>
-                <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#1800AD', letterSpacing: '0.3px', marginTop: '2px', textAlign: 'center' }}>Good Deals. Good Life</span>
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1800AD', letterSpacing: '0.5px', marginTop: '2px', textAlign: 'center', textTransform: 'uppercase' }}>Good Deals. Good Life</span>
             </span>
         </div>
     );
 }
 
-export default function Navbar({ onLogoClick }) {
+export default function Navbar() {
     const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [activeMegaMenu, setActiveMegaMenu] = useState(null);
@@ -46,6 +46,30 @@ export default function Navbar({ onLogoClick }) {
     const [cartProductName, setCartProductName] = useState('');
     const [showWishlistNotification, setShowWishlistNotification] = useState(false);
     const [wishlistProductName, setWishlistProductName] = useState('');
+
+    // --- Live search recommendations ---
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchSuggestions, setSearchSuggestions] = useState([]);
+    const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
+    const [isSearchLoading, setIsSearchLoading] = useState(false);
+    const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+    const searchWrapperRef = useRef(null);
+    const searchIndexRef = useRef(null); // caches the full product list for client-side filtering
+
+    // --- Category row with dynamic "More" expansion ---
+    // (kept fully separate from `showAllSubcategories`, which already controls an
+    // unrelated toggle inside NavbarMegaMenu — reusing it here would have coupled
+    // two unrelated UI pieces together.)
+    const allNavCategories = useMemo(
+        () => [...MAIN_CATEGORIES, ...customAdminCategories],
+        [customAdminCategories]
+    );
+    const [visibleCatCount, setVisibleCatCount] = useState(allNavCategories.length);
+    const [isCategoryOverflowOpen, setIsCategoryOverflowOpen] = useState(false);
+    const subNavRowRef = useRef(null);
+    const allCatBtnRef = useRef(null);
+    const moreCatBtnRef = useRef(null);
+    const catMeasureRefs = useRef([]);
 
     const navigate = useNavigate();
     const location = useLocation();
@@ -347,10 +371,205 @@ export default function Navbar({ onLogoClick }) {
             if (profileRef.current && !profileRef.current.contains(event.target)) {
                 setIsProfileOpen(false);
             }
+            if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target)) {
+                setShowSearchSuggestions(false);
+            }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    // Measure the first row so remaining categories can be displayed below it.
+    useLayoutEffect(() => {
+        const recalcVisibleCategories = () => {
+            const row = subNavRowRef.current;
+            if (!row || catMeasureRefs.current.length === 0) return;
+
+            const rowStyle = window.getComputedStyle(row);
+            const gap = parseFloat(rowStyle.columnGap || rowStyle.gap) || 8;
+            const containerWidth = row.clientWidth;
+            const allBtnWidth = allCatBtnRef.current?.offsetWidth || 0;
+            const moreBtnWidth = moreCatBtnRef.current?.offsetWidth || 90;
+
+            let used = allBtnWidth + gap;
+            let fit = 0;
+
+            for (let i = 0; i < allNavCategories.length; i++) {
+                const el = catMeasureRefs.current[i];
+                if (!el) continue;
+                const itemWidth = el.offsetWidth + gap;
+                const isLastItem = i === allNavCategories.length - 1;
+                const reserve = isLastItem ? 0 : moreBtnWidth + gap;
+
+                if (used + itemWidth + reserve <= containerWidth) {
+                    used += itemWidth;
+                    fit++;
+                } else {
+                    break;
+                }
+            }
+
+            setVisibleCatCount(fit);
+        };
+
+        recalcVisibleCategories();
+
+        const resizeObserver = new ResizeObserver(recalcVisibleCategories);
+        if (subNavRowRef.current) resizeObserver.observe(subNavRowRef.current);
+        window.addEventListener('resize', recalcVisibleCategories);
+
+        // Re-measure once web fonts finish loading — a font swap can change
+        // button widths after the first measurement and silently throw off
+        // the fit calculation (buttons overflow with no "More" to catch them).
+        let cancelled = false;
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(() => {
+                if (!cancelled) recalcVisibleCategories();
+            });
+        }
+
+        return () => {
+            cancelled = true;
+            resizeObserver.disconnect();
+            window.removeEventListener('resize', recalcVisibleCategories);
+        };
+    }, [allNavCategories]);
+
+    // Lazily fetch + cache the product list used to power search suggestions.
+    // Reuses the same 5-minute localStorage cache pattern as Home.jsx so this
+    // doesn't add extra Firestore/API reads beyond what the home page already does.
+    const getSearchIndex = async () => {
+        if (searchIndexRef.current) return searchIndexRef.current;
+        const products = await fetchWithCache(
+            'search_index_products',
+            async () => {
+                const res = await fetch(`${API_BASE}/products?limit=100`);
+                if (!res.ok) throw new Error('Products API failed');
+                const apiData = await res.json();
+                return (apiData.products || []).map(p => {
+                    if (!p.name && p.title) p.name = p.title;
+                    return p;
+                });
+            },
+            5 * 60 * 1000
+        );
+        searchIndexRef.current = products;
+        return products;
+    };
+
+    // Turns the raw product list into short, Google-style query completions —
+    // e.g. typing "saree" surfaces "Silk Saree", "Banarasi Saree", etc. instead
+    // of a list of full product cards. Matches every word of the query (in any
+    // order/position, not just as one exact phrase) against product name,
+    // category, subCategory, description and tags — so "pink saree" finds
+    // "Pink Floral Patterned Art Silk Saree" — ranks "starts with" matches
+    // highest, and dedupes so the same phrase never appears twice.
+    const buildSuggestions = (products, query) => {
+        const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+        if (tokens.length === 0) return [];
+        const seen = new Set();
+        const scored = [];
+
+        for (const p of products) {
+            const name = p.name || '';
+            const category = p.category || '';
+            const subCategory = p.subCategory || '';
+            const haystack = [name, category, subCategory, p.description, ...(p.tags || [])]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+            if (!tokens.every(t => haystack.includes(t))) continue;
+
+            const nameLower = name.toLowerCase();
+            const fullQuery = tokens.join(' ');
+            let score = 3; // matched only via description/tags/category etc.
+            if (nameLower.startsWith(fullQuery)) score = 0; // best: name starts with the full query
+            else if (tokens.every(t => nameLower.includes(t))) score = 1; // every word appears in the name
+            else if (nameLower.includes(fullQuery)) score = 2; // exact phrase appears somewhere in the name
+
+            scored.push({
+                text: name || category || subCategory,
+                category: category || subCategory || 'Product',
+                product: p,
+                score,
+            });
+        }
+
+        scored.sort((a, b) => a.score - b.score || a.text.length - b.text.length);
+
+        const results = [];
+        for (const item of scored) {
+            const key = item.text.toLowerCase();
+            if (!item.text || seen.has(key)) continue;
+            seen.add(key);
+            results.push(item);
+            if (results.length >= 8) break;
+        }
+        return results;
+    };
+
+    // Debounced live-filtering as the user types
+    useEffect(() => {
+        const trimmed = searchQuery.trim();
+        setActiveSuggestionIndex(-1);
+        if (!trimmed) {
+            setSearchSuggestions([]);
+            setIsSearchLoading(false);
+            return;
+        }
+
+        setIsSearchLoading(true);
+        const timer = setTimeout(async () => {
+            try {
+                const products = await getSearchIndex();
+                setSearchSuggestions(buildSuggestions(products, trimmed));
+            } catch (err) {
+                console.error('Search suggestion fetch failed:', err);
+                setSearchSuggestions([]);
+            } finally {
+                setIsSearchLoading(false);
+            }
+        }, 200); // debounce so we're not filtering on every keystroke
+
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
+    const runFullSearch = (rawQuery) => {
+        const trimmed = (rawQuery ?? searchQuery).trim();
+        if (!trimmed) return;
+        const params = new URLSearchParams();
+        params.set('search', trimmed);
+        navigate(`/products?${params.toString()}`);
+        setShowSearchSuggestions(false);
+    };
+
+    // Selecting a suggestion behaves like a search-engine autocomplete: it
+    // completes the query text and runs the search, rather than jumping
+    // straight to one product.
+    const selectSuggestion = (suggestion) => {
+        setShowSearchSuggestions(false);
+        setSearchQuery(suggestion.text);
+        runFullSearch(suggestion.text);
+    };
+
+    // Bolds every word from the query wherever it appears in the suggestion
+    // text — handles multi-word queries like "pink saree" where the words
+    // don't sit next to each other in the product name.
+    const highlightMatch = (text, query) => {
+        if (!text) return text;
+        const tokens = [...new Set(query.trim().toLowerCase().split(/\s+/).filter(Boolean))];
+        if (tokens.length === 0) return text;
+
+        const escaped = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        const regex = new RegExp(`(${escaped.join('|')})`, 'gi');
+        const parts = text.split(regex);
+
+        return parts.map((part, i) =>
+            tokens.includes(part.toLowerCase())
+                ? <strong key={i}>{part}</strong>
+                : <span key={i}>{part}</span>
+        );
+    };
 
     const handleLogout = async () => {
         try {
@@ -415,16 +634,9 @@ export default function Navbar({ onLogoClick }) {
                 <div className="main-nav-wrapper">
                     <div className="container main-nav">
                         {location.pathname === '/' ? (
-                            // Already on Home — there's nowhere to navigate to, but clicking
-                            // the logo should still replay the intro animation.
-                            <button
-                                type="button"
-                                className="brand-logo"
-                                onClick={() => onLogoClick && onLogoClick()}
-                                style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
-                            >
+                            <div className="brand-logo" style={{ cursor: 'default' }}>
                                 <GoodkartLogo />
-                            </button>
+                            </div>
                         ) : (
                             <Link to="/" className="brand-logo">
                                 <GoodkartLogo />
@@ -433,20 +645,106 @@ export default function Navbar({ onLogoClick }) {
 
                         {!location.pathname.startsWith('/checkout') && (
                             <>
-                                <div className="nav-search">
-                                    <Search size={18} className="search-icon" />
+                                <div className="nav-search" ref={searchWrapperRef}>
+                                    <button
+                                        type="button"
+                                        aria-label="Search"
+                                        className="search-icon-btn"
+                                        onClick={() => runFullSearch(searchQuery)}
+                                    >
+                                        <Search size={18} className="search-icon" />
+                                    </button>
                                     <input
                                         type="text"
                                         placeholder="Search products, brands and more..."
+                                        value={searchQuery}
+                                        onChange={(e) => {
+                                            setSearchQuery(e.target.value);
+                                            setShowSearchSuggestions(true);
+                                        }}
+                                        onFocus={() => {
+                                            if (searchQuery.trim()) setShowSearchSuggestions(true);
+                                        }}
                                         onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && e.target.value.trim()) {
-                                                const params = new URLSearchParams();
-                                                params.set('search', e.target.value.trim());
-                                                navigate(`/products?${params.toString()}`);
+                                            if (e.key === 'ArrowDown') {
+                                                if (searchSuggestions.length > 0) {
+                                                    e.preventDefault();
+                                                    setShowSearchSuggestions(true);
+                                                    setActiveSuggestionIndex((prev) => (prev + 1) % searchSuggestions.length);
+                                                }
+                                            } else if (e.key === 'ArrowUp') {
+                                                if (searchSuggestions.length > 0) {
+                                                    e.preventDefault();
+                                                    setShowSearchSuggestions(true);
+                                                    setActiveSuggestionIndex((prev) => (prev <= 0 ? searchSuggestions.length - 1 : prev - 1));
+                                                }
+                                            } else if (e.key === 'Enter' && e.target.value.trim()) {
+                                                if (activeSuggestionIndex >= 0 && searchSuggestions[activeSuggestionIndex]) {
+                                                    selectSuggestion(searchSuggestions[activeSuggestionIndex]);
+                                                } else {
+                                                    runFullSearch(e.target.value);
+                                                }
+                                                e.target.blur();
+                                            } else if (e.key === 'Escape') {
+                                                setShowSearchSuggestions(false);
                                                 e.target.blur();
                                             }
                                         }}
                                     />
+                                    {searchQuery && (
+                                        <button
+                                            type="button"
+                                            aria-label="Clear search"
+                                            onClick={() => {
+                                                setSearchQuery('');
+                                                setSearchSuggestions([]);
+                                            }}
+                                            style={{
+                                                position: 'absolute',
+                                                right: '14px',
+                                                top: '50%',
+                                                transform: 'translateY(-50%)',
+                                                display: 'flex',
+                                                color: '#9CA3AF',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    )}
+
+                                    {showSearchSuggestions && searchQuery.trim() && (
+                                        <div className="search-suggestions">
+                                            {isSearchLoading ? (
+                                                <div className="search-suggestions-empty">Searching...</div>
+                                            ) : searchSuggestions.length > 0 ? (
+                                                <>
+                                                    {searchSuggestions.map((s, i) => (
+                                                        <button
+                                                            key={s.text}
+                                                            type="button"
+                                                            className={`search-suggestion-item ${i === activeSuggestionIndex ? 'active' : ''}`}
+                                                            onMouseEnter={() => setActiveSuggestionIndex(i)}
+                                                            onClick={() => selectSuggestion(s)}
+                                                        >
+                                                            <Search size={15} className="search-suggestion-icon" />
+                                                            <span className="search-suggestion-name">{highlightMatch(s.text, searchQuery)}</span>
+                                                            <span className="search-suggestion-category">in {s.category}</span>
+                                                        </button>
+                                                    ))}
+                                                    <button
+                                                        type="button"
+                                                        className="search-suggestions-viewall"
+                                                        onClick={() => runFullSearch(searchQuery)}
+                                                    >
+                                                        View all results for "{searchQuery.trim()}"
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <div className="search-suggestions-empty">No products found for "{searchQuery.trim()}"</div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {user && user.role !== 'ADMIN' ? (
@@ -558,10 +856,42 @@ export default function Navbar({ onLogoClick }) {
                         style={{ display: 'block' }}
                     >
                         <div className="container">
-                            {/* Row 1: All button + First 10 categories + More button */}
-                            <div className="sub-nav sub-nav-row-1">
+                            {/* Off-screen measuring clone: same buttons, same classes, so their
+                                natural widths can be read without ever being visible. This is what
+                                lets the visible row below stay on a single line and hand off
+                                whatever doesn't fit to the "More" dropdown, instead of wrapping. */}
+                            <div
+                                aria-hidden="true"
+                                style={{
+                                    position: 'absolute',
+                                    visibility: 'hidden',
+                                    height: 0,
+                                    overflow: 'hidden',
+                                    top: '-9999px',
+                                    left: '-9999px',
+                                    display: 'flex',
+                                    flexWrap: 'nowrap',
+                                    gap: '0.4rem',
+                                    pointerEvents: 'none'
+                                }}
+                            >
+                                {allNavCategories.map((cat, i) => (
+                                    <button
+                                        key={`measure-${cat}`}
+                                        ref={el => { catMeasureRefs.current[i] = el; }}
+                                        className="sub-nav-link"
+                                        tabIndex={-1}
+                                    >
+                                        {cat}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Category row - always a single line; overflow goes into "More" */}
+                            <div className="sub-nav sub-nav-row-1" ref={subNavRowRef}>
                                 {/* All Categories Button */}
                                 <button
+                                    ref={allCatBtnRef}
                                     className="sub-nav-link all-categories-btn"
                                     onClick={() => setIsSidebarOpen(true)}
                                 >
@@ -569,7 +899,7 @@ export default function Navbar({ onLogoClick }) {
                                     All
                                 </button>
 
-                                {MAIN_CATEGORIES.slice(0, 10).map(cat => {
+                                {allNavCategories.slice(0, visibleCatCount).map(cat => {
                                     const path = `/products?category=${cat}`;
                                     const isMega = !!SUBCATEGORIES[cat];
 
@@ -607,19 +937,25 @@ export default function Navbar({ onLogoClick }) {
                                         </div>
                                     );
                                 })}
-                                <button
-                                    className="sub-nav-link more-categories-btn"
-                                    onClick={() => setShowAllSubcategories(!showAllSubcategories)}
-                                >
-                                    {showAllSubcategories ? 'Less' : 'More'}
-                                    <ChevronDown size={12} style={{ transform: showAllSubcategories ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', strokeWidth: 3 }} />
-                                </button>
+
+                                {visibleCatCount < allNavCategories.length && (
+                                    <div className="sub-nav-item category-overflow-wrap">
+                                        <button
+                                            ref={moreCatBtnRef}
+                                            className="sub-nav-link more-categories-btn"
+                                            onClick={() => setIsCategoryOverflowOpen(!isCategoryOverflowOpen)}
+                                        >
+                                            More
+                                            <ChevronDown size={12} style={{ transform: isCategoryOverflowOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', strokeWidth: 3 }} />
+                                        </button>
+
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Row 2: Remaining categories starting from Gifts & Customization (collapsible) */}
-                            {showAllSubcategories && (
-                                <div className="sub-nav sub-nav-row-2 animate-slide-down">
-                                    {[...MAIN_CATEGORIES.slice(10), ...customAdminCategories].map(cat => {
+                            {isCategoryOverflowOpen && visibleCatCount < allNavCategories.length && (
+                                <div className="sub-nav sub-nav-row-2">
+                                    {allNavCategories.slice(visibleCatCount).map(cat => {
                                         const path = `/products?category=${cat}`;
                                         const isMega = !!SUBCATEGORIES[cat];
 
@@ -628,7 +964,6 @@ export default function Navbar({ onLogoClick }) {
                                                 <button
                                                     className={`sub-nav-link ${activeMegaMenu === cat ? 'active' : ''}`}
                                                     onMouseEnter={() => {
-                                                        // Only trigger hover if not locked
                                                         if (isMega && !isHoverLocked) {
                                                             setActiveMegaMenu(cat);
                                                             setActiveSubCategory(0);
@@ -637,17 +972,11 @@ export default function Navbar({ onLogoClick }) {
                                                     onClick={(e) => {
                                                         e.preventDefault();
                                                         if (isMega) {
-                                                            // Open megamenu and lock hover for 2 seconds
                                                             setActiveMegaMenu(cat);
                                                             setActiveSubCategory(0);
                                                             setIsHoverLocked(true);
-                                                            
-                                                            // Unlock after 2 seconds
-                                                            setTimeout(() => {
-                                                                setIsHoverLocked(false);
-                                                            }, 2000);
+                                                            setTimeout(() => setIsHoverLocked(false), 2000);
                                                         } else {
-                                                            // If no megamenu, navigate to category page
                                                             navigate(path);
                                                         }
                                                     }}
