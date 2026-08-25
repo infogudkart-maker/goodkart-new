@@ -138,18 +138,10 @@ export default function ProductReviews({
 
     return (
         <>
-            {/* Description */}
-            <section className="pd-desc-block">
-                <div className="block-header">
-                    <h2>Description</h2>
-                </div>
-                <div className="desc-content-modern">
-                    <ExpandableText text={product?.description} maxLength={150} />
-                </div>
-            </section>
+
 
             {/* Reviews */}
-            <section className="pd-reviews-block">
+            <section className="pd-reviews-block" id="customer-reviews-section">
                 <div className="block-header">
                     <h2>Customer Reviews</h2>
                     <div className="header-stats">
