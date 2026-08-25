@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Home.css';
 import { auth } from '@/modules/shared/config/firebase';
-import { API_BASE } from '@/modules/shared/utils/api';
+import { API_BASE, fetchWithTimeout } from '@/modules/shared/utils/api';
 import { addToCart } from '@/modules/shared/utils/cartUtils';
 import { addToWishlist, removeFromWishlist, listenToWishlist } from '@/modules/shared/utils/wishlistUtils';
 import QuickViewModal from '@/modules/shared/components/common/QuickViewModal';
@@ -20,6 +20,9 @@ export default function Home() {
     const [latestProducts, setLatestProducts] = useState([]);
     const [dealsProducts, setDealsProducts] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [slowLoad, setSlowLoad] = useState(false);
+    const [loadError, setLoadError] = useState(null);
+    const [retryCount, setRetryCount] = useState(0);
     const [wishlist, setWishlist] = useState([]);
     const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
     const [selectedQuickProduct, setSelectedQuickProduct] = useState(null);
@@ -27,14 +30,26 @@ export default function Home() {
     const navigate = useNavigate();
 
     useEffect(() => {
+        // The backend is hosted on Render's free tier, which spins down when
+        // idle — the first request after a while can take 20-60s to wake it
+        // back up. That's normal, not a bug, but a bare spinner with no
+        // explanation makes it look frozen. Swap in a more honest message
+        // once it's been a few seconds so it's clear it's still working.
+        setLoadError(null);
+        setSlowLoad(false);
+        const slowLoadTimer = setTimeout(() => setSlowLoad(true), 6000);
+
         const fetchData = async () => {
             try {
                 // Use cache with 5 minute TTL to reduce Firestore reads
                 const allProducts = await fetchWithCache(
                     'home_products',
                     async () => {
-                        // Use backend API (avoids direct client-side Firestore reads)
-                        const res = await fetch(`${API_BASE}/products?limit=100`);
+                        // Use backend API (avoids direct client-side Firestore reads).
+                        // fetchWithTimeout aborts after 25s instead of hanging forever
+                        // if the request stalls (dead port, silent firewall drop, a
+                        // cold-start that never finishes).
+                        const res = await fetchWithTimeout(`${API_BASE}/products?limit=100`);
                         if (!res.ok) throw new Error('Products API failed');
                         const apiData = await res.json();
                         return (apiData.products || []).map(p => {
@@ -96,11 +111,16 @@ export default function Home() {
                 fetchReviewsForProducts(priorityProducts);
             } catch (err) {
                 console.error(err);
+                setLoadError(err.message || 'Failed to load products');
                 setLoading(false);
+            } finally {
+                clearTimeout(slowLoadTimer);
             }
         };
         fetchData();
-    }, []);
+
+        return () => clearTimeout(slowLoadTimer);
+    }, [retryCount]);
 
     // Fetch reviews for products
     const fetchReviewsForProducts = async (productsToFetch) => {
@@ -182,7 +202,44 @@ export default function Home() {
     };
 
     if (loading) {
-        return <LoadingSpinner fullScreen size="large" message="Loading amazing products for you..." />;
+        return (
+            <LoadingSpinner
+                fullScreen
+                size="large"
+                message={
+                    slowLoad
+                        ? "Still loading — our server may be waking up after a period of inactivity, this can take up to a minute on the first visit."
+                        : "Loading amazing products for you..."
+                }
+            />
+        );
+    }
+
+    if (loadError) {
+        return (
+            <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                minHeight: '60vh', textAlign: 'center', padding: '24px', gap: '12px',
+            }}>
+                <p style={{ fontSize: '1.05rem', fontWeight: 600, color: '#1a1a2e' }}>
+                    Couldn't load products right now
+                </p>
+                <p style={{ color: '#6b7280', maxWidth: 420 }}>
+                    {loadError.includes('timed out')
+                        ? "The request timed out — the server may still be waking up. Give it a moment and try again."
+                        : "There was a problem reaching the server. Check your connection and try again."}
+                </p>
+                <button
+                    onClick={() => { setLoading(true); setRetryCount(c => c + 1); }}
+                    style={{
+                        marginTop: '4px', padding: '10px 24px', borderRadius: '8px', border: 'none',
+                        background: '#1800AD', color: '#fff', fontWeight: 600, cursor: 'pointer',
+                    }}
+                >
+                    Retry
+                </button>
+            </div>
+        );
     }
 
     return (
@@ -229,4 +286,3 @@ export default function Home() {
         </div>
     );
 }
-

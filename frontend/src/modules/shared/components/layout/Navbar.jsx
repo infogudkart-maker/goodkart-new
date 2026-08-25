@@ -29,7 +29,7 @@ function GoodkartLogo() {
     );
 }
 
-export default function Navbar() {
+export default function Navbar({ onLogoClick }) {
     const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [activeMegaMenu, setActiveMegaMenu] = useState(null);
@@ -634,9 +634,14 @@ export default function Navbar() {
                 <div className="main-nav-wrapper">
                     <div className="container main-nav">
                         {location.pathname === '/' ? (
-                            <div className="brand-logo" style={{ cursor: 'default' }}>
+                            <button
+                                type="button"
+                                className="brand-logo"
+                                onClick={() => onLogoClick && onLogoClick()}
+                                style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                            >
                                 <GoodkartLogo />
-                            </div>
+                            </button>
                         ) : (
                             <Link to="/" className="brand-logo">
                                 <GoodkartLogo />
@@ -1051,5 +1056,3 @@ export default function Navbar() {
         </>
     );
 }
-
-
