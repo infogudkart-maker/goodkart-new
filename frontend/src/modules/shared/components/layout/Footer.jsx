@@ -58,11 +58,11 @@ export default function Footer() {
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                             <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <img src="/goodkart-logo.png" alt="Goodkart logo" style={{ height: '64px', width: 'auto', objectFit: 'contain' }} />
-                                <span style={{ lineHeight: 1, display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontFamily: "'Outfit', 'Manrope', sans-serif", lineHeight: 1, letterSpacing: '-0.5px', display: 'flex', flexDirection: 'column' }}>
                                     <span>
-                                        <span style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span style={{ fontSize: '2rem', fontWeight: 400, color: '#5BB8FF' }}>kart</span>
+                                        <span style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span style={{ fontSize: '2rem', fontWeight: 700, color: '#5BB8FF' }}>kart</span>
                                     </span>
-                                    <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#1800AD', letterSpacing: '0.3px', marginTop: '2px', textAlign: 'center' }}>Good Deals. Good Life</span>
+                                    <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1800AD', letterSpacing: '0.5px', marginTop: '2px', textAlign: 'center', textTransform: 'uppercase' }}>Good Deals. Good Life</span>
                                 </span>
                             </div>
                             <p className="text-muted" style={{ lineHeight: 1.6 }}>The future of global marketplace. Fast, secure, and seller-friendly.</p>

@@ -8,13 +8,13 @@ const Footer = () => {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-12">
           <div className="lg:col-span-1">
-            <Link to="/" className="flex items-center gap-1.5 mb-4">
-              <img src="/goodkart-logo.png" alt="" style={{ height: '60px', width: '60px', objectFit: 'contain' }} />
-              <span style={{ lineHeight: 1, display: 'flex', flexDirection: 'column' }}>
+            <Link to="/" className="flex items-center gap-3 mb-4">
+              <img src="/goodkart-logo.png" alt="Goodkart logo" style={{ height: '64px', width: 'auto', objectFit: 'contain' }} />
+              <span style={{ fontFamily: "'Outfit', 'Manrope', sans-serif", lineHeight: 1, letterSpacing: '-0.5px', display: 'flex', flexDirection: 'column' }}>
                 <span>
-                  <span style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span style={{ fontSize: '2rem', fontWeight: 400, color: '#5BB8FF' }}>kart</span>
+                  <span style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span style={{ fontSize: '2rem', fontWeight: 700, color: '#5BB8FF' }}>kart</span>
                 </span>
-                <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#1800AD', letterSpacing: '0.3px', textAlign: 'center' }}>Good Deals. Good Life</span>
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1800AD', letterSpacing: '0.5px', marginTop: '2px', textAlign: 'center', textTransform: 'uppercase' }}>Good Deals. Good Life</span>
               </span>
             </Link>
             <p className="text-gray-600 text-sm leading-relaxed mb-6">
@@ -68,7 +68,7 @@ const Footer = () => {
         
         <div className="pt-8 border-t border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-xs text-gray-500">
-            © 2026 Goodkart Inc. All Rights Reserved.
+            © 2026 S S Inphinite LLP. All rights reserved.
           </p>
           <div className="flex gap-6 text-xs text-gray-500">
             <Link to="#" className="hover:text-[#3B7CF1]">Privacy Policy</Link>

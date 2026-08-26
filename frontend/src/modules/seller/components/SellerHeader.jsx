@@ -115,15 +115,15 @@ const SellerHeader = ({ onLoginClick, onNewSellerClick }) => {
     <header className="sticky top-0 z-50 w-full border-b border-gray-100 bg-white/90 backdrop-blur-md">
       <div className="container mx-auto flex h-16 md:h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-4 md:gap-8">
-          <Link to="/" className="flex items-center gap-1.5">
-            <img src="/goodkart-logo.png" alt="" style={{ height: '60px', width: '60px', objectFit: 'contain' }} />
-            <span style={{ lineHeight: 1, display: 'flex', flexDirection: 'column' }}>
+          <Link to="/" className="flex items-center gap-3">
+            <img src="/goodkart-logo.png" alt="Goodkart logo" style={{ height: '64px', width: 'auto', objectFit: 'contain' }} />
+            <span style={{ fontFamily: "'Outfit', 'Manrope', sans-serif", lineHeight: 1, letterSpacing: '-0.5px', display: 'flex', flexDirection: 'column' }}>
               <span>
-                <span style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span style={{ fontSize: '2rem', fontWeight: 400, color: '#5BB8FF' }}>kart</span>
+                <span style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span style={{ fontSize: '2rem', fontWeight: 700, color: '#5BB8FF' }}>kart</span>
               </span>
-              <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#1800AD', letterSpacing: '0.3px', textAlign: 'center' }}>Good Deals. Good Life</span>
+              <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1800AD', letterSpacing: '0.5px', marginTop: '2px', textAlign: 'center', textTransform: 'uppercase' }}>Good Deals. Good Life</span>
             </span>
-            <span className="text-xs font-medium text-gray-400 ml-1 hidden sm:inline">Supplier</span>
+            <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full ml-1 hidden sm:inline-block">Supplier</span>
           </Link>
           <nav className="hidden lg:flex items-center gap-6">
             {navItems.map((item) => (

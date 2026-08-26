@@ -7,14 +7,9 @@ import StatsSection from '../components/StatsSection';
 import WhyGoodkart from '../components/WhySellSathi';
 import HowItWorks from '../components/HowItWorks';
 import Testimonials from '../components/Testimonials';
+import PopularSellerCategories from '../components/PopularSellerCategories';
 import AuthModal from '@/modules/auth/components/AuthModal';
 import { ArrowRight, BookOpen, Truck, Rocket, BarChart3, Mail, Zap, Play } from 'lucide-react';
-
-const categories = [
-  "Sell Sarees Online", "Sell Jewellery Online", "Sell Tshirts Online",
-  "Sell Shirts Online", "Sell Watches Online", "Sell Electronics Online",
-  "Sell Clothes Online", "Sell Socks Online"
-];
 
 export const SellerPage = () => {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -163,21 +158,7 @@ export const SellerPage = () => {
       </section>
 
       {/* Popular Categories Section */}
-      <section id="shipping-returns" className="py-20 bg-gray-50">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-10">Popular Categories To Sell Online</h2>
-          <div className="flex flex-wrap gap-4 mb-8">
-            {categories.map((cat, i) => (
-              <button key={i} className="px-6 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 font-medium hover:border-brand hover:text-brand transition-all">
-                {cat}
-              </button>
-            ))}
-          </div>
-          <button className="text-brand font-bold flex items-center gap-2 hover:underline">
-            View More <ArrowRight size={18} />
-          </button>
-        </div>
-      </section>
+      <PopularSellerCategories onCategorySelect={handleNewSellerClick} />
 
       {/* Support Section */}
       <section className="py-20 bg-white">
