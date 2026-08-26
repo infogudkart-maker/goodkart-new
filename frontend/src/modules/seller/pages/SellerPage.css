@@ -22,6 +22,18 @@
     padding: 0 32px;
 }
 
+/* Guard against horizontal overflow. Several sections (WhySellSathi,
+   PopularSellerCategories, the hero) position large decorative blur
+   circles with `absolute` + negative offsets; if any of those ever
+   slip past their section's own `overflow-hidden`, they widen the
+   whole page and make every centered `.container` look shifted off
+   to one side (with a horizontal scrollbar appearing at the bottom).
+   This keeps the page itself pinned to the viewport width so content
+   is reliably centered regardless of what any child section does. */
+.seller-page {
+    overflow-x: hidden;
+}
+
 @media (max-width: 1024px) {
     .seller-page .container {
         padding: 0 24px;
