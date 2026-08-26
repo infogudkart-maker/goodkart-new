@@ -61,12 +61,20 @@ const PriceDisplay = ({
     const styles = sizeClasses[size] || sizeClasses.md;
     // The image shows just "13%", so strip off " OFF" if present
     const cleanDiscountTag = discountTag ? discountTag.replace(' OFF', '') : '';
+    const finalPriceText = formatPrice(finalPrice);
+    const priceLengthClass = finalPriceText.length >= 12
+        ? 'price-length-extra-long'
+        : finalPriceText.length >= 10
+            ? 'price-length-long'
+            : finalPriceText.length >= 8
+                ? 'price-length-medium'
+                : '';
 
     return (
-        <div className={`price-display-container ${styles.container} ${className}`}>
+        <div className={`price-display-container ${styles.container} ${priceLengthClass} ${className}`}>
             <div className={`price-row ${styles.row}`}>
                 <span className={`final-price ${styles.final}`}>
-                    {formatPrice(finalPrice)}{includesGST && !isHomePage && '*'}
+                    {finalPriceText}{includesGST && !isHomePage && '*'}
                 </span>
 
                 {showDiscount && strikethroughPrice > finalPrice && (
