@@ -64,11 +64,32 @@ export default function Navbar({ onLogoClick }) {
         () => [...MAIN_CATEGORIES, ...customAdminCategories],
         [customAdminCategories]
     );
-    const [visibleCatCount, setVisibleCatCount] = useState(allNavCategories.length);
+    // Categories pinned permanently under "More" instead of competing for a
+    // spot in the auto-fit row — they never get measured against the
+    // available width and never render inline.
+    const ALWAYS_OVERFLOW_CATEGORIES = useMemo(() => ['Beauty & Personal Care'], []);
+    const fittableCategories = useMemo(
+        () => allNavCategories.filter(cat => !ALWAYS_OVERFLOW_CATEGORIES.includes(cat)),
+        [allNavCategories, ALWAYS_OVERFLOW_CATEGORIES]
+    );
+    // Where to splice the always-overflow categories into the "More" dropdown.
+    // Inserted right before "Others" (instead of appended at the very end) so
+    // "Others" stays the last entry in the list, as designed.
+    const spliceOverflowCategories = (categories) => {
+        const othersIndex = categories.indexOf('Others');
+        if (othersIndex === -1) return [...categories, ...ALWAYS_OVERFLOW_CATEGORIES];
+        return [
+            ...categories.slice(0, othersIndex),
+            ...ALWAYS_OVERFLOW_CATEGORIES,
+            ...categories.slice(othersIndex)
+        ];
+    };
+    const [visibleCatCount, setVisibleCatCount] = useState(fittableCategories.length);
     const [isCategoryOverflowOpen, setIsCategoryOverflowOpen] = useState(false);
     const subNavRowRef = useRef(null);
     const allCatBtnRef = useRef(null);
     const moreCatBtnRef = useRef(null);
+    const moreMeasureBtnRef = useRef(null);
     const catMeasureRefs = useRef([]);
 
     const navigate = useNavigate();
@@ -381,7 +402,22 @@ export default function Navbar({ onLogoClick }) {
 
     // Measure the first row so remaining categories can be displayed below it.
     useLayoutEffect(() => {
+        let cancelled = false;
+        // Guards every measurement pass against running on fallback-font widths.
+        // Fonts not being ready yet used to make the very first calculation use
+        // the wrong (pre-swap) button widths; that calculation would then show a
+        // category like "Beauty & Personal Care" as fitting, only for the later
+        // fonts.ready recalculation to correct itself and yank that exact,
+        // already-visible (possibly just-clicked) category into the "More" menu
+        // a moment after the page painted. Waiting for fonts to be ready before
+        // ever measuring means the first calculation is already correct, so
+        // categories don't visibly appear and then disappear.
+        const fontsReady = !(document.fonts && document.fonts.status !== 'loaded');
+
         const recalcVisibleCategories = () => {
+            if (cancelled) return;
+            if (document.fonts && document.fonts.status !== 'loaded') return;
+
             const row = subNavRowRef.current;
             if (!row || catMeasureRefs.current.length === 0) return;
 
@@ -389,17 +425,23 @@ export default function Navbar({ onLogoClick }) {
             const gap = parseFloat(rowStyle.columnGap || rowStyle.gap) || 8;
             const containerWidth = row.clientWidth;
             const allBtnWidth = allCatBtnRef.current?.offsetWidth || 0;
-            const moreBtnWidth = moreCatBtnRef.current?.offsetWidth || 90;
+            // Prefer the always-mounted hidden clone; it's available on the very
+            // first pass, unlike the real "More" button which only exists once
+            // this same calculation has already decided something overflows.
+            const moreBtnWidth = moreMeasureBtnRef.current?.offsetWidth || moreCatBtnRef.current?.offsetWidth || 90;
 
             let used = allBtnWidth + gap;
             let fit = 0;
 
-            for (let i = 0; i < allNavCategories.length; i++) {
+            for (let i = 0; i < fittableCategories.length; i++) {
                 const el = catMeasureRefs.current[i];
                 if (!el) continue;
                 const itemWidth = el.offsetWidth + gap;
-                const isLastItem = i === allNavCategories.length - 1;
-                const reserve = isLastItem ? 0 : moreBtnWidth + gap;
+                // "More" is always needed — ALWAYS_OVERFLOW_CATEGORIES guarantees
+                // there's always at least one category pinned under it — so every
+                // item must reserve space for it, including the last one.
+                const isLastItem = i === fittableCategories.length - 1;
+                const reserve = (isLastItem && ALWAYS_OVERFLOW_CATEGORIES.length === 0) ? 0 : moreBtnWidth + gap;
 
                 if (used + itemWidth + reserve <= containerWidth) {
                     used += itemWidth;
@@ -412,28 +454,26 @@ export default function Navbar({ onLogoClick }) {
             setVisibleCatCount(fit);
         };
 
-        recalcVisibleCategories();
+        if (fontsReady) {
+            recalcVisibleCategories();
+        } else if (document.fonts && document.fonts.ready) {
+            // Don't measure at all until the real webfont is in — the first
+            // (and only) calculation then already reflects final button widths.
+            document.fonts.ready.then(recalcVisibleCategories);
+        } else {
+            recalcVisibleCategories();
+        }
 
         const resizeObserver = new ResizeObserver(recalcVisibleCategories);
         if (subNavRowRef.current) resizeObserver.observe(subNavRowRef.current);
         window.addEventListener('resize', recalcVisibleCategories);
-
-        // Re-measure once web fonts finish loading — a font swap can change
-        // button widths after the first measurement and silently throw off
-        // the fit calculation (buttons overflow with no "More" to catch them).
-        let cancelled = false;
-        if (document.fonts && document.fonts.ready) {
-            document.fonts.ready.then(() => {
-                if (!cancelled) recalcVisibleCategories();
-            });
-        }
 
         return () => {
             cancelled = true;
             resizeObserver.disconnect();
             window.removeEventListener('resize', recalcVisibleCategories);
         };
-    }, [allNavCategories]);
+    }, [fittableCategories, ALWAYS_OVERFLOW_CATEGORIES]);
 
     // Lazily fetch + cache the product list used to power search suggestions.
     // Reuses the same 5-minute localStorage cache pattern as Home.jsx so this
@@ -880,7 +920,7 @@ export default function Navbar({ onLogoClick }) {
                                     pointerEvents: 'none'
                                 }}
                             >
-                                {allNavCategories.map((cat, i) => (
+                                {fittableCategories.map((cat, i) => (
                                     <button
                                         key={`measure-${cat}`}
                                         ref={el => { catMeasureRefs.current[i] = el; }}
@@ -890,6 +930,26 @@ export default function Navbar({ onLogoClick }) {
                                         {cat}
                                     </button>
                                 ))}
+                                {/* Hidden clone of the "More" button itself. It's rendered
+                                    unconditionally (unlike the real one below, which only
+                                    mounts once visibleCatCount says something overflows) so
+                                    its true width is available on the very first measurement
+                                    pass. Without this, the first pass falls back to a guessed
+                                    width, decides something fits, mounts the real "More"
+                                    button, and then the very next measurement pass (fired
+                                    automatically by ResizeObserver right after mount) reads
+                                    the real — larger — width and un-fits whichever category
+                                    was sitting on that boundary, so it jumps into "More" a
+                                    moment after first paint. Measuring it here up front keeps
+                                    the first calculation already correct. */}
+                                <button
+                                    ref={moreMeasureBtnRef}
+                                    className="sub-nav-link more-categories-btn"
+                                    tabIndex={-1}
+                                >
+                                    More
+                                    <ChevronDown size={12} strokeWidth={3} />
+                                </button>
                             </div>
 
                             {/* Category row - always a single line; overflow goes into "More" */}
@@ -904,7 +964,7 @@ export default function Navbar({ onLogoClick }) {
                                     All
                                 </button>
 
-                                {allNavCategories.slice(0, visibleCatCount).map(cat => {
+                                {fittableCategories.slice(0, visibleCatCount).map(cat => {
                                     const path = `/products?category=${cat}`;
                                     const isMega = !!SUBCATEGORIES[cat];
 
@@ -943,7 +1003,7 @@ export default function Navbar({ onLogoClick }) {
                                     );
                                 })}
 
-                                {visibleCatCount < allNavCategories.length && (
+                                {(visibleCatCount < fittableCategories.length || ALWAYS_OVERFLOW_CATEGORIES.length > 0) && (
                                     <div className="sub-nav-item category-overflow-wrap">
                                         <button
                                             ref={moreCatBtnRef}
@@ -958,9 +1018,9 @@ export default function Navbar({ onLogoClick }) {
                                 )}
                             </div>
 
-                            {isCategoryOverflowOpen && visibleCatCount < allNavCategories.length && (
+                            {isCategoryOverflowOpen && (visibleCatCount < fittableCategories.length || ALWAYS_OVERFLOW_CATEGORIES.length > 0) && (
                                 <div className="sub-nav sub-nav-row-2">
-                                    {allNavCategories.slice(visibleCatCount).map(cat => {
+                                    {spliceOverflowCategories(fittableCategories.slice(visibleCatCount)).map(cat => {
                                         const path = `/products?category=${cat}`;
                                         const isMega = !!SUBCATEGORIES[cat];
 
