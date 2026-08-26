@@ -4,6 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import SellerHeader from '../components/SellerHeader';
 import Footer from '../components/Footer';
 import StatsSection from '../components/StatsSection';
+import './SellerPage.css';
 import WhyGoodkart from '../components/WhySellSathi';
 import HowItWorks from '../components/HowItWorks';
 import Testimonials from '../components/Testimonials';
@@ -32,7 +33,7 @@ export const SellerPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="seller-page min-h-screen bg-white">
       <SellerHeader onLoginClick={() => setIsLoginOpen(true)} onNewSellerClick={handleNewSellerClick} />
 
       {/* Hero Section */}
@@ -44,7 +45,7 @@ export const SellerPage = () => {
               animate={{ opacity: 1, y: 0 }}
               className="flex-1 text-center lg:text-left"
             >
-              <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 leading-tight mb-6">
+              <h1 className="hero-title text-4xl text-gray-900 mb-6">
                 Sell Online to Crores of Customers at <span className="text-brand">0% Commission</span>
               </h1>
               <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto lg:mx-0">
@@ -91,15 +92,15 @@ export const SellerPage = () => {
       <HowItWorks />
 
       {/* Learning Hub Section */}
-      <section id="pricing-commission" className="py-20 bg-brand">
+      <section id="pricing-commission" className="py-20 lg:py-24 bg-brand">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items_center justify-between gap-8 bg-white/10 backdrop-blur-md rounded-[2.5rem] p-8 md:p-16 border border-white/20">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8 bg-white/10 backdrop-blur-md rounded-[2.5rem] p-8 md:p-16 border border-white/20">
             <div className="text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start gap-3 mb-4 text-white/80">
                 <BookOpen size={24} />
                 <span className="font-bold tracking-widest uppercase text-sm">Supplier Learning Hub</span>
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">
+              <h2 className="section-title text-white mb-2">
                 Learn how to sell and grow your business on Goodkart
               </h2>
             </div>
@@ -111,9 +112,9 @@ export const SellerPage = () => {
       </section>
 
       {/* Grow Your Business Section */}
-      <section id="grow-business" className="py-24 bg-white">
+      <section id="grow-business" className="py-20 lg:py-24 bg-white">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-16 text-center">
+          <h2 className="section-title text-gray-900 mb-16 text-center">
             Grow Your Business With Goodkart
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -161,12 +162,12 @@ export const SellerPage = () => {
       <PopularSellerCategories onCategorySelect={handleNewSellerClick} />
 
       {/* Support Section */}
-      <section className="py-20 bg-white">
+      <section className="py-20 lg:py-24 bg-white">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-brand/5 text-brand mb-8">
             <Mail size={32} />
           </div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Goodkart Supplier Support Available 24/7</h2>
+          <h2 className="section-title text-gray-900 mb-4">Goodkart Supplier Support Available 24/7</h2>
           <p className="text-gray-600 mb-8">Have questions? We're here to help you every step of the way.</p>
           <a href="mailto:support@Goodkart.com" className="text-2xl font-bold text-brand hover:underline">
             support@Goodkart.com
@@ -182,5 +183,3 @@ export const SellerPage = () => {
     </div>
   );
 };
-
-

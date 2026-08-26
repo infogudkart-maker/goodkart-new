@@ -42,10 +42,10 @@ const steps = [
 
 const HowItWorks = () => {
   return (
-    <section id="how-it-works" className="py-24 bg-gray-50 overflow-hidden">
+    <section id="how-it-works" className="py-20 lg:py-24 bg-gray-50 overflow-hidden">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-2xl mx-auto mb-20">
-          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6 tracking-tight">
+          <h2 className="section-title text-gray-900 mb-6">
             How it works
           </h2>
           <p className="text-gray-600 text-lg">
@@ -117,7 +117,3 @@ const HowItWorks = () => {
 };
 
 export default HowItWorks;
-
-
-
-

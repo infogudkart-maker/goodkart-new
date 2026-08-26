@@ -187,7 +187,7 @@ export default function PopularSellerCategories({ onCategorySelect }) {
   const displayedCategories = isExpanded ? filteredCategories : filteredCategories.slice(0, 8);
 
   return (
-    <section id="popular-categories" className="py-20 bg-gradient-to-b from-gray-50/80 to-white relative overflow-hidden">
+    <section id="popular-categories" className="py-20 lg:py-24 bg-gradient-to-b from-gray-50/80 to-white relative overflow-hidden">
       {/* Background Decorative Blur */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-full pointer-events-none overflow-hidden">
         <div className="absolute -top-24 right-10 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl" />
@@ -201,7 +201,7 @@ export default function PopularSellerCategories({ onCategorySelect }) {
             <TrendingUp size={14} className="text-[#3B7CF1]" />
             High Demand Sectors
           </div>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight mb-4 font-['Outfit',sans-serif]">
+          <h2 className="section-title text-gray-900 mb-4">
             Popular Categories To Sell Online
           </h2>
           <p className="text-gray-600 text-base sm:text-lg">

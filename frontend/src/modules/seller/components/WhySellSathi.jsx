@@ -100,7 +100,7 @@ export default function WhyGoodkart() {
             Seller Advantages
           </div>
           
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight mb-4 font-['Outfit',sans-serif]">
+          <h2 className="section-title text-gray-900 mb-4">
             Why Suppliers Love Goodkart
           </h2>
           
