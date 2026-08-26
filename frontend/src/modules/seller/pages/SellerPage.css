@@ -1,0 +1,53 @@
+/* ============================================================
+   SELLER PAGE — STANDARDIZED CONTAINER & TYPE SCALE
+   Mirrors the rules Home.jsx uses (see marketplace/pages/Home.css:
+   `.home-wrapper .container`) so the seller landing page (/seller)
+   lines up with the marketplace home page instead of using its own
+   wider container and one-off Tailwind heading sizes.
+
+   Font family is already shared globally (index.css sets
+   `--font-body` on every element and `--font-display` on
+   h1-h4/.section-title/.btn-modern), so no font-family changes are
+   needed here — only container width/padding and heading sizes.
+   ============================================================ */
+
+/* Container: 1280px max width, 32/24/16px padding at the same
+   breakpoints Home uses (1024px, 768px). Two-class selector so this
+   always wins over the page-wide `.container` (1600px) and over the
+   Tailwind px-4/sm:px-6/lg:px-8 utilities already on these elements,
+   regardless of CSS load order. */
+.seller-page .container {
+    max-width: var(--container-max, 1280px);
+    margin: 0 auto;
+    padding: 0 32px;
+}
+
+@media (max-width: 1024px) {
+    .seller-page .container {
+        padding: 0 24px;
+    }
+}
+
+@media (max-width: 768px) {
+    .seller-page .container {
+        padding: 0 16px;
+    }
+}
+
+/* Hero heading: match Home's hero scale (var(--text-5xl), 48px) instead
+   of the old text-6xl/text-7xl (60-72px) which was well outside the
+   design system's type scale. */
+.seller-page .hero-title {
+    font-size: var(--text-5xl, 48px);
+    font-weight: var(--font-extrabold, 800);
+    line-height: var(--leading-tight, 1.25);
+}
+
+/* Section headings: match Home's title-modern / header-info h2
+   (var(--text-3xl), 30px) so every section header on the seller page
+   reads at the same size as Home's section titles. */
+.seller-page .section-title {
+    font-size: var(--text-3xl, 30px);
+    font-weight: var(--font-extrabold, 800);
+    line-height: var(--leading-tight, 1.25);
+}
