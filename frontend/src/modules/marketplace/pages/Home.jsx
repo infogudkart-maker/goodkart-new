@@ -9,6 +9,7 @@ import QuickViewModal from '@/modules/shared/components/common/QuickViewModal';
 import LoadingSpinner from '@/modules/shared/components/common/LoadingSpinner';
 import { fetchWithCache } from '@/modules/shared/utils/firestoreCache';
 import { fetchProductReviews } from '@/modules/shared/utils/reviewUtils';
+import { MAIN_CATEGORIES } from '@/modules/shared/config/categories';
 
 // Extracted Components
 import HeroCarousel from '../components/Home/HeroCarousel';
@@ -86,12 +87,9 @@ export default function Home() {
                     featured.push(...featuredGrouped[cat].slice(0, 5));
                 });
                 
-                // Latest: Take 5 products from each category (reversed for newest)
-                const latestGrouped = groupByCategory([...allProducts].reverse());
-                const latest = [];
-                Object.keys(latestGrouped).forEach(cat => {
-                    latest.push(...latestGrouped[cat].slice(0, 5));
-                });
+                // New Arrivals: newest products overall, no per-category split —
+                // this is one flat "just landed" shelf, not grouped by category.
+                const latest = [...allProducts].reverse().slice(0, 20);
                 
                 // Deals: Products with discount, take 5 from each category
                 const dealsFiltered = allProducts.filter(p => p.discount || p.oldPrice);
@@ -191,9 +189,26 @@ export default function Home() {
         }, {});
     };
 
+    // Reorders a {category: items[]} map so it always reads Fashion (Men),
+    // then Fashion (Women), then every other category in the app's master
+    // category order — falling back to whatever's left (e.g. an "Other"
+    // bucket) at the end so no products get silently dropped.
+    const orderByMasterCategories = (grouped) => {
+        const ordered = {};
+        MAIN_CATEGORIES.forEach(cat => {
+            if (grouped[cat]) ordered[cat] = grouped[cat];
+        });
+        Object.keys(grouped).forEach(cat => {
+            if (!ordered[cat]) ordered[cat] = grouped[cat];
+        });
+        return ordered;
+    };
+
     const groupedDeals = useMemo(() => groupByCategory(dealsProducts), [dealsProducts]);
-    const groupedFeatured = useMemo(() => groupByCategory(featuredProducts), [featuredProducts]);
-    const groupedLatest = useMemo(() => groupByCategory(latestProducts), [latestProducts]);
+    const groupedFeatured = useMemo(
+        () => orderByMasterCategories(groupByCategory(featuredProducts)),
+        [featuredProducts]
+    );
 
     const openQuickView = (e, product) => {
         if (e) e.stopPropagation();
@@ -255,27 +270,35 @@ export default function Home() {
                 openQuickView={openQuickView}
             />
 
-            {[
-                /* "New Arrivals" moved above "Featured Products" per request — this reuses the
-                   same newest-first product grouping that previously powered the bottom
-                   "Latest Releases" section, just relabeled and repositioned. */
-                { title: "New Arrivals", subtitle: "Fresh picks just added to the store", groupedData: groupedLatest, bg: "#F8F9FA" },
-                { title: "Featured Products", subtitle: "Our top picks for you", groupedData: groupedFeatured, bg: "#FFFFFF" }
-            ].map((sec, idx) => (
-                <ProductSection 
-                    key={idx}
-                    title={sec.title}
-                    subtitle={sec.subtitle}
-                    groupedData={sec.groupedData}
-                    bg={sec.bg}
-                    loading={false}
-                    wishlist={wishlist}
-                    productReviews={productReviews}
-                    handleAddToCart={handleAddToCart}
-                    toggleWishlist={toggleWishlist}
-                    openQuickView={openQuickView}
-                />
-            ))}
+            {/* New Arrivals: one flat shelf of the newest products, not split by category. */}
+            <ProductSection
+                title="New Arrivals"
+                subtitle="Fresh picks just added to the store"
+                flat
+                items={latestProducts}
+                bg="#F8F9FA"
+                loading={false}
+                wishlist={wishlist}
+                productReviews={productReviews}
+                handleAddToCart={handleAddToCart}
+                toggleWishlist={toggleWishlist}
+                openQuickView={openQuickView}
+            />
+
+            {/* Featured Products: grouped by category, Fashion (Men) then Fashion (Women)
+                first, then every other category in order below. */}
+            <ProductSection
+                title="Featured Products"
+                subtitle="Our top picks for you"
+                groupedData={groupedFeatured}
+                bg="#FFFFFF"
+                loading={false}
+                wishlist={wishlist}
+                productReviews={productReviews}
+                handleAddToCart={handleAddToCart}
+                toggleWishlist={toggleWishlist}
+                openQuickView={openQuickView}
+            />
 
             <QuickViewModal
                 isOpen={isQuickViewOpen}

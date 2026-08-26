@@ -80,10 +80,10 @@ export default function ProductCard({
                 </div>
 
                 <div className="info-bottom">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
-                        <PriceDisplay product={product} size="sm" showGSTIndicator={false} />
+                    <div className="price-info-stack">
+                        <PriceDisplay product={product} size="sm" showGSTIndicator={false} className="home-card-price" />
                         {isOutOfStock && (
-                            <span style={{ color: '#ef4444', fontSize: '0.7rem', fontWeight: 900, textTransform: 'uppercase' }}>
+                            <span className="out-of-stock-label">
                                 Out of Stock
                             </span>
                         )}
