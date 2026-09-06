@@ -863,8 +863,6 @@
 
 @keyframes search-suggest-in {
     from { opacity: 0; transform: translateY(-6px); }
-    /* raise above the navbar stacking context so it's clickable and visible */
-    z-index: 1100;
 }
 
 .search-suggestion-item {
