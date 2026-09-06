@@ -1,12 +1,7 @@
-/* Full-screen boot splash: plays the real reference video (rabbit hop -> cart
-   -> bag-icon morph) muted and once, then hands off to our own HTML
-   wordmark + tagline (guaranteed correct "Goodkart" spelling) before fading
-   away. Scoped under .intro-splash so nothing here can leak into the rest
-   of the app.
-
-   The video's own background is a near-white grey (~#EDEDED); the splash
-   background matches it so the letterboxed edges around the video (object-fit:
-   contain) are invisible and the cut to the logo reveal has no visible seam. */
+/* Full-screen boot splash: pops in our own HTML wordmark + tagline
+   (guaranteed correct "Goodkart" spelling), then docks the icon onto the
+   real Navbar logo and fades away. Scoped under .intro-splash so nothing
+   here can leak into the rest of the app. */
 
 .intro-splash {
     position: fixed;
@@ -36,48 +31,28 @@
     background-color: transparent;
 }
 
-/* Sized for the video's native 16:9 aspect ratio; scales down to fit small
-   viewports while never exceeding the video's own resolution. */
+/* Sized to comfortably fit the logo group on any viewport, including small
+   phone screens, with room to breathe on the sides. */
 .intro-stage {
     position: relative;
-    width: min(100vw, 177.78vh, 1280px);
-    aspect-ratio: 16 / 9;
+    width: min(90vw, 480px);
+    min-height: clamp(180px, 40vh, 280px);
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-/* Positioned absolutely (rather than laid out inline by .intro-stage's own
-   flex) so the video and the logo group occupy the exact same spot. They
-   never actually overlap on screen though (see VIDEO_FADE_MS in the JS) —
-   the video fades out completely on its own first, since it and the static
-   reveal icon are different artwork and blending them together read as a
-   glitch rather than a smooth handoff. */
-.intro-video {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    display: block;
-    opacity: 1;
-    transition: opacity 0.25s ease;
-}
-
-.intro-video--out {
-    opacity: 0;
-}
-
 /* ---------- logo reveal ---------- */
 .intro-logo-group {
-    position: absolute;
-    inset: 0;
+    position: relative;
     z-index: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 4px;
+    padding: 0 16px;
+    max-width: 100%;
 }
 
 .intro-logo-icon {

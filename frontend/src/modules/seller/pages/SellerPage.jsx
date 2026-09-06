@@ -92,13 +92,13 @@ export const SellerPage = () => {
       <HowItWorks />
 
       {/* Learning Hub Section */}
-      <section id="pricing-commission" className="py-20 lg:py-24 bg-brand">
+      <section id="pricing-commission" className="py-16 lg:py-20 bg-brand">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-8 bg-white/10 backdrop-blur-md rounded-[2.5rem] p-8 md:p-16 border border-white/20">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8 bg-white/10 backdrop-blur-md rounded-[2.5rem] p-8 md:p-12 border border-white/20">
             <div className="text-center md:text-left">
-              <div className="flex items-center justify-center md:justify-start gap-3 mb-4 text-white/80">
-                <BookOpen size={24} />
-                <span className="font-bold tracking-widest uppercase text-sm">Supplier Learning Hub</span>
+              <div className="inline-flex items-center justify-center md:justify-start gap-2 px-3.5 py-1.5 rounded-full bg-white/15 border border-white/30 mb-4">
+                <BookOpen size={16} className="text-white" />
+                <span className="font-bold tracking-widest uppercase text-xs text-white">Supplier Learning Hub</span>
               </div>
               <h2 className="section-title text-white mb-2">
                 Learn how to sell and grow your business on Goodkart
