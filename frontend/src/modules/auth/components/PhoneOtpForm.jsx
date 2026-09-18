@@ -1,4 +1,4 @@
-import { Phone, Lock, Eye, EyeOff, Mail, User as UserIcon, Calendar, ArrowRight } from 'lucide-react';
+import { Phone, Lock, Eye, EyeOff, Mail, User as UserIcon, Calendar, ArrowRight, ShieldCheck } from 'lucide-react';
 
 /**
  * PhoneOtpForm — handles the phone number entry + OTP verification steps.
@@ -12,6 +12,7 @@ export default function PhoneOtpForm({
     setPhone,
     otp,
     setOtp,
+    generatedOtp,
     formData,
     setFormData,
     showPassword,
@@ -132,6 +133,42 @@ export default function PhoneOtpForm({
                 ) : (
                     /* OTP step */
                     <div className="auth-fields-grid">
+                        {generatedOtp && (
+                            <div className="otp-popup-card" style={{
+                                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                                border: '1.5px solid #7dd3fc',
+                                borderRadius: '1rem',
+                                padding: '1rem 0.85rem',
+                                textAlign: 'center',
+                                marginBottom: '0.5rem',
+                                boxShadow: '0 4px 14px rgba(14, 165, 233, 0.12)'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: '#0369a1', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+                                    <ShieldCheck size={18} style={{ color: '#0284c7' }} />
+                                    <span>OTP Verification Code</span>
+                                </div>
+                                <div style={{
+                                    fontSize: '1.8rem',
+                                    fontWeight: 800,
+                                    letterSpacing: '0.3em',
+                                    color: '#0c4a6e',
+                                    fontFamily: 'monospace',
+                                    background: '#ffffff',
+                                    padding: '0.4rem 1rem',
+                                    borderRadius: '0.75rem',
+                                    border: '1.5px dashed #38bdf8',
+                                    display: 'inline-block',
+                                    margin: '0.2rem 0',
+                                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.03)'
+                                }}>
+                                    {generatedOtp}
+                                </div>
+                                <p style={{ fontSize: '0.78rem', color: '#0369a1', marginTop: '0.3rem', marginBottom: 0, fontWeight: 500 }}>
+                                    Please enter the code shown above to verify & sign in
+                                </p>
+                            </div>
+                        )}
+
                         <div className="otp-input-container">
                             <input
                                 type="text"
@@ -145,7 +182,17 @@ export default function PhoneOtpForm({
                         <button type="submit" className="auth-submit-btn" disabled={otp.length < 6 || loading}>
                             {loading ? 'Verifying...' : (isRegistering ? 'Complete Registration' : 'Login')} <ArrowRight size={18} />
                         </button>
-                        <button type="button" className="auth-back-link" onClick={onChangePhone}>Change Phone Number</button>
+                        <button
+                            type="button"
+                            className="auth-back-link"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onChangePhone();
+                            }}
+                        >
+                            Change Phone Number
+                        </button>
                     </div>
                 )}
             </form>

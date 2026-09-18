@@ -65,3 +65,17 @@
     line-height: 1.8;
 }
 
+@media (max-width: 600px) {
+    .faq-page {
+        padding: 1.25rem 0.75rem;
+    }
+
+    .faq-container {
+        padding: 1.5rem 1.25rem;
+    }
+
+    .faq-section-title {
+        font-size: 1rem;
+    }
+}
+

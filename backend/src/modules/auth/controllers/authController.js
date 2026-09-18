@@ -1,6 +1,14 @@
 'use strict';
 const { admin, db } = require('../../../config/firebase');
 
+// Test/dev-only bypass that skips real OTP verification. Follows the same
+// convention as ALLOW_TEST_UID in middleware/auth.js: on by default outside
+// production, off in production unless explicitly enabled. This guarantees
+// that in production every phone number must complete a real Firebase OTP
+// (sent to that exact number) before login/registration succeeds.
+const IS_DEV = process.env.NODE_ENV !== 'production';
+const ALLOW_TEST_LOGIN = IS_DEV || process.env.ALLOW_TEST_LOGIN === 'true';
+
 /**
  * Handles user login (Firebase Token or Test Mode).
  */
@@ -14,7 +22,7 @@ const login = async (req, res) => {
         let fullName = null;
         let decodedToken = null;
 
-        if (isTest) {
+        if (isTest && ALLOW_TEST_LOGIN) {
             uid = phone ? `test_${phone.replace(/[^0-9]/g, '')}` : `test_email_${(testEmail || "user").replace(/[^a-zA-Z0-9]/g, '')}`;
             email = testEmail || null;
             fullName = req.body.fullName || testEmail?.split('@')[0] || "Test User";
@@ -244,7 +252,7 @@ const register = async (req, res) => {
         let uid;
         let phoneNumber = phone;
 
-        if (isTest) {
+        if (isTest && ALLOW_TEST_LOGIN) {
             uid = phone ? `test_${phone.replace(/[^0-9]/g, '')}` : `test_email_${Date.now()}`;
         } else {
             if (!idToken) return res.status(400).json({ success: false, message: "ID token is required" });
@@ -458,6 +466,10 @@ const uploadImage = async (req, res) => {
  */
 const testLogin = async (req, res) => {
     try {
+        if (!ALLOW_TEST_LOGIN) {
+            return res.status(403).json({ success: false, message: "Test login is disabled in this environment" });
+        }
+
         const { phone, otp } = req.body;
 
         if (!phone) {
