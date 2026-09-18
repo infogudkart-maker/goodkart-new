@@ -45,17 +45,26 @@
     padding: 8px 12px !important;
   }
 
-  .navbar .logo img {
-    height: 45px !important;
-    width: 45px !important;
+  /* Goodkart wordmark + icon inside .brand-logo (see Navbar.jsx GoodkartLogo).
+     These target the actual rendered elements (previously this block targeted
+     stale ".navbar .logo ..." selectors that don't exist in the markup, so
+     nothing shrank and the logo got clipped by .brand-logo's max-width/overflow
+     below instead of scaling down). */
+  .goodkart-logo {
+    gap: 6px !important;
   }
 
-  .navbar .logo span {
-    font-size: 1.5rem !important;
+  .goodkart-logo-img {
+    height: 32px !important;
   }
 
-  .navbar .logo span:last-child {
-    font-size: 0.55rem !important;
+  .goodkart-logo-name {
+    font-size: 1.05rem !important;
+  }
+
+  .goodkart-logo-tagline {
+    font-size: 0.45rem !important;
+    white-space: nowrap;
   }
 
   /* Keep the shared navbar usable on narrow screens. */
@@ -68,10 +77,10 @@
   }
 
   .brand-logo {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
-    max-width: 145px;
-    overflow: hidden;
+    max-width: 190px;
+    overflow: visible;
   }
 
   .main-nav .btn-seller {
@@ -107,7 +116,21 @@
     width: 100%;
     height: 42px;
     font-size: 14px;
-    padding-left: 56px;
+    padding-left: 48px;
+  }
+
+  /* Icon button itself defaults to left:6px/32px wide from Navbar.css (ends at
+     38px) which left too little breathing room versus the placeholder text at
+     this width; nudge it in slightly and shrink to match the smaller input. */
+  .main-nav .search-icon-btn {
+    left: 4px;
+    width: 28px;
+    height: 28px;
+  }
+
+  .main-nav .search-icon {
+    width: 16px;
+    height: 16px;
   }
 
   /* Category navigation */
@@ -1075,10 +1098,28 @@
     padding: 16px !important;
   }
 
-  /* Auth Modal */
-  .auth-modal {
-    width: 90% !important;
-    max-width: 400px !important;
+  /* Auth Modal (login / register / OTP) */
+  .auth-modal-overlay {
+    padding: 1rem 0.75rem !important;
+    align-items: flex-start !important;
+  }
+
+  .auth-modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 1.25rem 1.25rem !important;
+    margin-top: 1.5rem !important;
+  }
+
+  .phone-prefix-box {
+    min-width: 60px !important;
+    padding-left: 2.5rem !important;
+  }
+
+  .otp-input-container input {
+    letter-spacing: 0.35rem !important;
+    font-size: 1.25rem !important;
+    padding: 0.85rem !important;
   }
 
   /* Review Modal */

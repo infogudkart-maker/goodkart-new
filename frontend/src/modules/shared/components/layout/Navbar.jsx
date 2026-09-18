@@ -17,13 +17,18 @@ import './Navbar.css';
 
 function GoodkartLogo() {
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <img src="/goodkart-logo.png" alt="Goodkart logo" style={{ height: '64px', width: 'auto', objectFit: 'contain' }} />
-            <span style={{ fontFamily: "'Outfit', 'Manrope', sans-serif", lineHeight: 1, letterSpacing: '-0.5px', display: 'flex', flexDirection: 'column' }}>
+        <div className="goodkart-logo" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <img
+                src="/goodkart-logo.png"
+                alt="Goodkart logo"
+                className="goodkart-logo-img"
+                style={{ height: '64px', width: 'auto', objectFit: 'contain' }}
+            />
+            <span className="goodkart-logo-text" style={{ fontFamily: "'Outfit', 'Manrope', sans-serif", lineHeight: 1, letterSpacing: '-0.5px', display: 'flex', flexDirection: 'column' }}>
                 <span>
-                    <span style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span style={{ fontSize: '2rem', fontWeight: 700, color: '#5BB8FF' }}>kart</span>
+                    <span className="goodkart-logo-name" style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span className="goodkart-logo-name" style={{ fontSize: '2rem', fontWeight: 700, color: '#5BB8FF' }}>kart</span>
                 </span>
-                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1800AD', letterSpacing: '0.5px', marginTop: '2px', textAlign: 'center', textTransform: 'uppercase' }}>Good Deals. Good Life</span>
+                <span className="goodkart-logo-tagline" style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1800AD', letterSpacing: '0.5px', marginTop: '2px', textAlign: 'center', textTransform: 'uppercase' }}>Good Deals. Good Life</span>
             </span>
         </div>
     );

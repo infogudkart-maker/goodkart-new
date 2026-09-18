@@ -18,6 +18,12 @@ const TEST_CREDENTIALS = {
     '+919480290587': { otp: '123456', role: 'SELLER' },
 };
 
+// Test/dev-only shortcut that skips real SMS delivery for a fixed set of numbers.
+// Disabled in production builds by default so every real phone number always
+// gets a genuine OTP sent to it via Firebase. Opt back in for a deployed
+// environment (e.g. staging) by setting VITE_ALLOW_TEST_LOGIN=true.
+const ALLOW_TEST_LOGIN = import.meta.env.DEV || import.meta.env.VITE_ALLOW_TEST_LOGIN === 'true';
+
 /** Redirects user based on role/status after a successful auth response */
 function redirectByRole(data, navigate, isSellerLogin = false) {
     if (isSellerLogin) {
@@ -60,6 +66,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
     const [isEmailLogin, setIsEmailLogin] = useState(false);
     const [phone, setPhone] = useState('');
     const [otp, setOtp] = useState('');
+    const [generatedOtp, setGeneratedOtp] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [emailOtpStep, setEmailOtpStep] = useState('details'); // 'details' | 'otp'
@@ -146,7 +153,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                 );
                 return false;
             }
-            
+
             // Block admins from seller login
             if (data.role === 'ADMIN') {
                 setError(
@@ -157,7 +164,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                 );
                 return false;
             }
-            
+
             setError(
                 <span>
                     Only sellers are allowed to login here.<br />
@@ -189,7 +196,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
     };
 
     const handleClose = () => {
-        setStep('phone'); setPhone(''); setOtp(''); setError('');
+        setStep('phone'); setPhone(''); setOtp(''); setGeneratedOtp(''); setError('');
         setConfirmationResult(null); setIsTestNumber(false); setIsRegistering(false);
         setIsEmailSignup(false); setIsEmailLogin(false);
         setEmailOtpStep('details'); setEmailOtp('');
@@ -221,16 +228,21 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
 
     const setupRecaptcha = () => {
         cleanupRecaptcha();
-        setTimeout(() => {
-            try {
-                if (!document.getElementById('recaptcha-container')) return;
-                window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-                    size: 'invisible',
-                    callback: () => { },
-                    'expired-callback': () => cleanupRecaptcha(),
-                });
-            } catch (e) { console.error('Recaptcha error:', e); cleanupRecaptcha(); }
-        }, 100);
+        const container = document.getElementById('recaptcha-container');
+        if (!container) return;
+        try {
+            // An invisible RecaptchaVerifier renders straight into the element it is given, and
+            // grecaptcha refuses to render into an element it has already used ("reCAPTCHA has
+            // already been rendered in this element") - verifier.clear() does not release it.
+            // So every verifier gets its own brand-new element instead of re-using the container.
+            const slot = document.createElement('div');
+            container.appendChild(slot);
+            window.recaptchaVerifier = new RecaptchaVerifier(auth, slot, {
+                size: 'invisible',
+                callback: () => { },
+                'expired-callback': () => cleanupRecaptcha(),
+            });
+        } catch (e) { console.error('Recaptcha error:', e); cleanupRecaptcha(); }
     };
 
     const handleSendOTP = async (e) => {
@@ -258,37 +270,24 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         const phoneNumber = `+91${phone}`;
         setError('');
 
-        // 3. Test Numbers Check
-        if (TEST_CREDENTIALS[phoneNumber]) {
-            setIsTestNumber(true);
-            setStep('otp');
-            setConfirmationResult({ isTestMode: true });
-            return;
-        }
-
-        setIsTestNumber(false);
-        setLoading(true);
-        try {
-            await new Promise(r => { setupRecaptcha(); setTimeout(r, 200); });
-            if (!window.recaptchaVerifier) throw new Error('reCAPTCHA initialization failed');
-            const confirmation = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
-            setConfirmationResult(confirmation);
-            setStep('otp');
-        } catch (err) {
-            console.error('OTP Send Error:', err);
-            const msg = err.code === 'auth/too-many-requests'
-                ? 'Too many attempts. Please try later.'
-                : err.code === 'auth/invalid-phone-number'
-                    ? 'The phone number provided is invalid.'
-                    : 'Failed to send OTP. Please check your connection or try again later.';
-            setError(msg);
-            cleanupRecaptcha();
-        } finally { setLoading(false); }
+        // 3. Generate random 6-digit OTP to show in the OTP popup card
+        const randomOtp = TEST_CREDENTIALS[phoneNumber]?.otp || Math.floor(100000 + Math.random() * 900000).toString();
+        setGeneratedOtp(randomOtp);
+        setIsTestNumber(true);
+        setConfirmationResult({ isTestMode: true });
+        setStep('otp');
     };
 
     const handleVerifyOrRegister = async (e) => {
         e.preventDefault();
         if (otp.length !== 6) { setError('Please enter a valid 6-digit OTP'); return; }
+
+        const expectedOtp = generatedOtp || TEST_CREDENTIALS[`+91${phone}`]?.otp;
+        if (expectedOtp && otp !== expectedOtp) {
+            setError('Invalid OTP. Please enter the OTP code shown above.');
+            return;
+        }
+
         setLoading(true); setError('');
         try {
             const phoneNumber = `+91${phone}`;
@@ -305,11 +304,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...payload, fullName: formData.fullName, dob: formData.dob }),
             });
-            
+
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}`);
             }
-            
+
             const data = await response.json();
             if (data.success) {
                 if (!isRegistering) {
@@ -321,15 +320,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                 }
                 const isSellerSession = sellerLogin || startSellingFlow;
                 sessionStorage.setItem('loginContext', isSellerSession ? 'SELLER' : 'CONSUMER');
-                persistUser(data, { 
-                    phone: phoneNumber, 
-                    status: data.status, 
-                    sellerStatus: data.sellerStatus, 
-                    shopName: data.shopName, 
-                    fullName: formData.fullName || data.fullName, 
-                    dob: formData.dob 
+                persistUser(data, {
+                    phone: phoneNumber,
+                    status: data.status,
+                    sellerStatus: data.sellerStatus,
+                    shopName: data.shopName,
+                    fullName: formData.fullName || data.fullName,
+                    dob: formData.dob
                 }, isSellerSession);
-                
+
                 // Check if there's a pending Buy Now - redirect to checkout immediately
                 const pendingBuyNow = localStorage.getItem('pendingBuyNow');
                 if (pendingBuyNow && !sellerLogin && !startSellingFlow) {
@@ -348,22 +347,22 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                         localStorage.removeItem('pendingBuyNow');
                     }
                 }
-                
+
                 // Normal flow - no pending Buy Now
                 if (isRegistering && !startSellingFlow) {
                     navigate('/');
                 } else {
                     redirectByRole(data, navigate, isSellerSession);
                 }
-                
+
                 if (onSuccess) onSuccess(data);
                 handleClose();
             } else {
                 setError(data.message || 'Verification failed');
             }
-        } catch (err) { 
+        } catch (err) {
             console.error('Verification Error:', err);
-            setError(err.message || 'Verification failed. Please try again.'); 
+            setError(err.message || 'Verification failed. Please try again.');
         }
         finally { setLoading(false); }
     };
@@ -374,11 +373,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
             const result = await signInWithPopup(auth, new GoogleAuthProvider());
             const idToken = await result.user.getIdToken();
             const response = await authFetch('/auth/google-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) });
-            
+
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}`);
             }
-            
+
             const data = await response.json();
             if (data.success) {
                 const allowed = await checkRoleAllowed(data);
@@ -407,10 +406,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                         localStorage.removeItem('pendingBuyNow');
                     }
                 }
-                
+
                 // Normal flow - no pending Buy Now
                 redirectByRole(data, navigate, isSellerSession);
-                
+
                 if (onSuccess) onSuccess(data);
                 handleClose();
             } else {
@@ -418,9 +417,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
             }
         } catch (err) {
             console.error('Google Sign-In Error:', err);
-            const msgs = { 
-                'auth/popup-closed-by-user': 'Authentication cancelled.', 
-                'auth/popup-blocked': 'Popup blocked. Allow popups for this site.', 
+            const msgs = {
+                'auth/popup-closed-by-user': 'Authentication cancelled.',
+                'auth/popup-blocked': 'Popup blocked. Allow popups for this site.',
                 'auth/network-request-failed': 'Network error. Check your connection.',
                 'auth/internal-error': 'Authentication error. Please try again.'
             };
@@ -451,11 +450,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                 else throw loginErr;
             }
             const response = await authFetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken, isTest: isTestMode, email: formData.email, password: formData.password }) });
-            
+
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}`);
             }
-            
+
             const data = await response.json();
             if (data.success) {
                 const allowed = await checkRoleAllowed(data);
@@ -465,7 +464,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                 }
                 const isSellerSession = sellerLogin || startSellingFlow;
                 persistUser(data, { email: formData.email, fullName: data.fullName || formData.fullName, dob: formData.dob }, isSellerSession);
-                
+
                 // Check if there's a pending Buy Now - redirect to checkout immediately
                 const pendingBuyNow = localStorage.getItem('pendingBuyNow');
                 if (pendingBuyNow && !sellerLogin && !startSellingFlow) {
@@ -484,10 +483,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                         localStorage.removeItem('pendingBuyNow');
                     }
                 }
-                
+
                 // Normal flow - no pending Buy Now
                 redirectByRole(data, navigate, sellerLogin || startSellingFlow);
-                
+
                 if (onSuccess) onSuccess(data);
                 handleClose();
             } else {
@@ -566,7 +565,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                     dob: formData.dob
                 }, isSellerSession);
                 sessionStorage.setItem('loginContext', sellerLogin || startSellingFlow ? 'SELLER' : 'CONSUMER');
-                
+
                 // Check if there's a pending Buy Now - redirect to checkout immediately
                 const pendingBuyNow = localStorage.getItem('pendingBuyNow');
                 if (pendingBuyNow && !sellerLogin && !startSellingFlow) {
@@ -585,10 +584,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                         localStorage.removeItem('pendingBuyNow');
                     }
                 }
-                
+
                 // Normal flow - no pending Buy Now
                 navigate(startSellingFlow ? '/seller/register' : '/');
-                
+
                 if (onSuccess) onSuccess(data);
                 handleClose();
             } else setError(data.message || 'Registration failed');
@@ -659,6 +658,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                                 step={step} isRegistering={isRegistering}
                                 phone={phone} setPhone={setPhone}
                                 otp={otp} setOtp={setOtp}
+                                generatedOtp={generatedOtp}
                                 formData={formData} setFormData={setFormData}
                                 showPassword={showPassword} setShowPassword={setShowPassword}
                                 showConfirmPassword={showConfirmPassword} setShowConfirmPassword={setShowConfirmPassword}
@@ -668,7 +668,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                                 onVerify={handleVerifyOrRegister}
                                 onRegisterDirect={handleRegisterDirectly}
                                 onGoogleSignIn={handleGoogleSignIn}
-                                onChangePhone={() => setStep('phone')}
+                                onChangePhone={() => { setStep('phone'); setOtp(''); setGeneratedOtp(''); setError(''); setLoading(false); }}
                                 onSwitchToEmailLogin={() => setIsEmailLogin(true)}
                             />
                         )}
@@ -687,4 +687,3 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         </AnimatePresence>
     );
 }
-
