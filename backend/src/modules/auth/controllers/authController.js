@@ -1,13 +1,23 @@
 'use strict';
 const { admin, db } = require('../../../config/firebase');
 
-// Test/dev-only bypass that skips real OTP verification. Follows the same
-// convention as ALLOW_TEST_UID in middleware/auth.js: on by default outside
-// production, off in production unless explicitly enabled. This guarantees
-// that in production every phone number must complete a real Firebase OTP
-// (sent to that exact number) before login/registration succeeds.
-const IS_DEV = process.env.NODE_ENV !== 'production';
-const ALLOW_TEST_LOGIN = IS_DEV || process.env.ALLOW_TEST_LOGIN === 'true';
+// Test/dev-only bypass that skips real OTP verification. Normally this should
+// be gated by NODE_ENV/ALLOW_TEST_LOGIN so it's off in production by default
+// (see git history) - it's forced to `true` here, in code, because the
+// person deploying this doesn't currently have access to set environment
+// variables on the hosting dashboard (Render), and this line ships via a
+// normal git push instead.
+//
+// SECURITY: while this is `true`, anyone who sends { isTest: true, phone }
+// to /auth/login or /auth/register can log in as ANY phone number without
+// proving they own it - real SMS OTP verification is skipped entirely, in
+// every environment including production. Revert this to the NODE_ENV-based
+// check below (or get dashboard access and use the ALLOW_TEST_LOGIN env var)
+// as soon as real Firebase Phone Auth (SMS delivery) is set up, or sooner.
+//
+// const IS_DEV = process.env.NODE_ENV !== 'production';
+// const ALLOW_TEST_LOGIN = IS_DEV || process.env.ALLOW_TEST_LOGIN === 'true';
+const ALLOW_TEST_LOGIN = true;
 
 /**
  * Handles user login (Firebase Token or Test Mode).
@@ -58,7 +68,7 @@ const login = async (req, res) => {
             // Define test seller phone numbers
             const TEST_SELLER_PHONES = ['+919353469036', '+916366151635', '+919480290587'];
             const isTestSeller = phoneNumber && TEST_SELLER_PHONES.includes(phoneNumber);
-            
+
             // If they are logging in from Google but don't exist yet, we automatically create them
             // This skips the "complete profile" step on the frontend
             if (decodedToken && decodedToken.firebase && decodedToken.firebase.sign_in_provider === 'google.com') {
@@ -71,7 +81,7 @@ const login = async (req, res) => {
                     isActive: true,
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
-                
+
                 // If test seller, also create seller document
                 if (isTestSeller) {
                     await db.collection("sellers").doc(uid).set({
@@ -83,9 +93,9 @@ const login = async (req, res) => {
                         address: "Test Address",
                         appliedAt: admin.firestore.FieldValue.serverTimestamp(),
                     });
-                    
+
                     return res.status(200).json({
-                        success: true, uid, role: "SELLER", fullName: fullName || "Test Seller", 
+                        success: true, uid, role: "SELLER", fullName: fullName || "Test Seller",
                         status: "APPROVED", sellerStatus: "APPROVED", shopName: "Test Seller Shop",
                         message: "Test seller created via Google",
                     });
@@ -107,7 +117,7 @@ const login = async (req, res) => {
                 isActive: true,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
-            
+
             // If test seller, also create seller document
             if (isTestSeller) {
                 await db.collection("sellers").doc(uid).set({
@@ -119,9 +129,9 @@ const login = async (req, res) => {
                     address: "Test Address",
                     appliedAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
-                
+
                 return res.status(200).json({
-                    success: true, uid, role: "SELLER", fullName: fullName || "Test Seller", 
+                    success: true, uid, role: "SELLER", fullName: fullName || "Test Seller",
                     status: "APPROVED", sellerStatus: "APPROVED", shopName: "Test Seller Shop",
                     message: "Test seller created",
                 });
@@ -149,18 +159,18 @@ const login = async (req, res) => {
                 });
             }
         }
-        
+
         // Check if this is a test seller phone number and upgrade to seller if needed
         const TEST_SELLER_PHONES = ['+919353469036', '+916366151635', '+919480290587'];
         const isTestSeller = phoneNumber && TEST_SELLER_PHONES.includes(phoneNumber);
-        
+
         if (isTestSeller && userData.role !== "SELLER") {
             // Upgrade user to seller role
             try { await userRef.update({ role: "SELLER" }); } catch (e) { console.error("Failed to update role:", e); }
         }
 
         const sellerSnap = await db.collection("sellers").doc(uid).get();
-        
+
         // If test seller but no seller document exists, create it
         if (isTestSeller && !sellerSnap.exists) {
             await db.collection("sellers").doc(uid).set({
@@ -173,16 +183,16 @@ const login = async (req, res) => {
                 fullName: userData.fullName || "Test Seller",
                 appliedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
-            
+
             return res.status(200).json({
-                success: true, uid, role: "SELLER", 
-                status: "APPROVED", sellerStatus: "APPROVED", 
+                success: true, uid, role: "SELLER",
+                status: "APPROVED", sellerStatus: "APPROVED",
                 shopName: "Test Seller Shop",
                 fullName: userData.fullName || "Test Seller",
                 message: "Test seller upgraded and approved"
             });
         }
-        
+
         if (sellerSnap.exists) {
             const sellerData = sellerSnap.data();
             const sellerStatus = sellerData.sellerStatus || "PENDING";
@@ -502,7 +512,7 @@ const testLogin = async (req, res) => {
                 isTest: true,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
-            
+
             // If test seller, also create seller document
             if (isTestSeller) {
                 await db.collection("sellers").doc(uid).set({
@@ -514,7 +524,7 @@ const testLogin = async (req, res) => {
                     address: "Test Address",
                     appliedAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
-                
+
                 return res.status(200).json({
                     success: true,
                     uid,
@@ -562,11 +572,11 @@ const testLogin = async (req, res) => {
                 message: "Admin login successful"
             });
         }
-        
+
         // Check if this is a test seller phone number and upgrade to seller if needed
         const TEST_SELLER_PHONES = ['+919353469036', '+916366151635', '+919480290587'];
         const isTestSeller = TEST_SELLER_PHONES.includes(phone);
-        
+
         if (isTestSeller && userData.role !== "SELLER") {
             // Upgrade user to seller role
             try { await userRef.update({ role: "SELLER" }); } catch (e) { console.error("Failed to update role:", e); }
@@ -574,7 +584,7 @@ const testLogin = async (req, res) => {
 
         // Check if user is a seller
         const sellerSnap = await db.collection("sellers").doc(uid).get();
-        
+
         // If test seller but no seller document exists, create it
         if (isTestSeller && !sellerSnap.exists) {
             await db.collection("sellers").doc(uid).set({
@@ -587,7 +597,7 @@ const testLogin = async (req, res) => {
                 fullName: userData.fullName || "Test Seller",
                 appliedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
-            
+
             return res.status(200).json({
                 success: true,
                 uid,
@@ -599,7 +609,7 @@ const testLogin = async (req, res) => {
                 message: "Test seller upgraded and approved"
             });
         }
-        
+
         if (sellerSnap.exists) {
             const sellerData = sellerSnap.data();
             const sellerStatus = sellerData.sellerStatus || "PENDING";
@@ -671,4 +681,3 @@ const testLogin = async (req, res) => {
 };
 
 module.exports = { login, register, applySeller, extractAadhar, uploadImage, testLogin, sendEmailOtp, checkSellerStatus };
-
