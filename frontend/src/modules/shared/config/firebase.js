@@ -2,14 +2,20 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
+// NOTE: apiKey / messagingSenderId / appId / measurementId below are
+// placeholders. Get the real values from Firebase Console -> goodkart
+// project -> Project settings -> General -> "Your apps" -> add a Web app
+// (if you haven't registered one yet) -> copy the firebaseConfig object
+// shown there, and paste the real values in below. projectId, authDomain
+// and storageBucket are already correct for the goodkart project id.
 const firebaseConfig = {
-  apiKey: "AIzaSyAgz9OL6NYOxwxpzgz7e6Y1Zk6861Gpvt0",
-  authDomain: "sellsathi-94ede.firebaseapp.com",
-  projectId: "sellsathi-94ede",
-  storageBucket: "sellsathi-94ede.firebasestorage.app",
-  messagingSenderId: "213392011043",
-  appId: "1:213392011043:web:669298ae968e8af8a6a696",
-  measurementId: "G-TRNXGBX0HL"
+  apiKey: "AIzaSyCrVCO8HHxTS8X_JDy5DrGEhJZNUPdKRYY",
+  authDomain: "goodkart.firebaseapp.com",
+  projectId: "goodkart",
+  storageBucket: "goodkart.firebasestorage.app",
+  messagingSenderId: "158491180234",
+  appId: "1:158491180234:web:dc0ce161d69f1830054833",
+  measurementId: "G-MTPS28G650"
 };
 
 // Initialize Firebase

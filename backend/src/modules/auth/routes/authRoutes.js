@@ -9,6 +9,7 @@ const upload = require('../../../middleware/upload');
 router.post('/login', authController.login);
 router.post('/google-login', authController.login);   // Google OAuth uses same login flow
 router.post('/test-login', authController.testLogin);
+router.post('/check-user', authController.checkUser);   // Is this mobile number already registered?
 router.post('/register', authController.register);
 router.post('/send-email-otp', authController.sendEmailOtp);
 router.post('/apply-seller', verifyAuth, authController.applySeller);

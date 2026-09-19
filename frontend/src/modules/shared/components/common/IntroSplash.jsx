@@ -115,10 +115,20 @@ export default function IntroSplash({ onFinish }) {
                         } : undefined}
                         onAnimationEnd={settleEntrance('icon')}
                     />
-                    <div className={`intro-wordmark ${settled.wordmark ? 'intro-settled' : ''}`} ref={wordmarkRef} onAnimationEnd={settleEntrance('wordmark')}>
-                        <span className="intro-wordmark-good">Good</span><span className="intro-wordmark-kart">kart</span>
-                    </div>
-                    <div className={`intro-tagline ${settled.tagline ? 'intro-settled' : ''}`} ref={taglineRef} onAnimationEnd={settleEntrance('tagline')}>Good Deals. Good Life</div>
+                    <img
+                        src="/goodkart-wordmark.png"
+                        alt="Goodkart"
+                        className={`intro-wordmark ${settled.wordmark ? 'intro-settled' : ''}`}
+                        ref={wordmarkRef}
+                        onAnimationEnd={settleEntrance('wordmark')}
+                    />
+                    <img
+                        src="/goodkart-tagline.png"
+                        alt="Good Deals. Good Life"
+                        className={`intro-tagline ${settled.tagline ? 'intro-settled' : ''}`}
+                        ref={taglineRef}
+                        onAnimationEnd={settleEntrance('tagline')}
+                    />
                 </div>
             </div>
         </div>

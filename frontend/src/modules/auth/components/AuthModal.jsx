@@ -4,7 +4,7 @@ import { X, Phone, ShieldCheck, User as UserIcon, Mail } from 'lucide-react';
 import { auth } from '@/modules/shared/config/firebase';
 import { RecaptchaVerifier, signInWithPhoneNumber, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
-import { authFetch } from '@/modules/shared/utils/api';
+import { authFetch, API_BASE } from '@/modules/shared/utils/api';
 import PhoneOtpForm from './PhoneOtpForm';
 import EmailAuthForm from './EmailAuthForm';
 import './AuthModal.css';
@@ -23,6 +23,15 @@ const TEST_CREDENTIALS = {
 // gets a genuine OTP sent to it via Firebase. Opt back in for a deployed
 // environment (e.g. staging) by setting VITE_ALLOW_TEST_LOGIN=true.
 const ALLOW_TEST_LOGIN = import.meta.env.DEV || import.meta.env.VITE_ALLOW_TEST_LOGIN === 'true';
+
+/** Reads the server's own error message from a failed response (falls back to the status code). */
+async function serverErrorMessage(response) {
+    try {
+        const body = await response.json();
+        if (body?.message) return body.message;
+    } catch (_) { /* response was not JSON */ }
+    return `Server returned ${response.status}`;
+}
 
 /** Redirects user based on role/status after a successful auth response */
 function redirectByRole(data, navigate, isSellerLogin = false) {
@@ -79,6 +88,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
     const [dobFocused, setDobFocused] = useState(false);
     const [isGoogleRegistration, setIsGoogleRegistration] = useState(false);
     const [googleIdToken, setGoogleIdToken] = useState(null);
+    // Friendly banner ({ type: 'info' | 'success', text }) - e.g. "you're a new user, register first".
+    const [notice, setNotice] = useState(null);
+    // True between finishing registration and logging in with the OTP, so we know this is a brand-new account.
+    const [justRegistered, setJustRegistered] = useState(false);
     const navigate = useNavigate();
 
     const checkRoleAllowed = async (data) => {
@@ -110,7 +123,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
             }
             // CONSUMER → show "already a customer" message with options
             // Skip for NEW_USER or REGISTERED status (fresh credentials)
-            if (data.status === 'NEW_USER' || data.status === 'REGISTERED') {
+            if (justRegistered || data.status === 'NEW_USER' || data.status === 'REGISTERED') {
                 persistUser(data, { fullName: data.fullName, status: data.status }, true);
                 navigate('/seller/register');
                 handleClose();
@@ -197,6 +210,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
 
     const handleClose = () => {
         setStep('phone'); setPhone(''); setOtp(''); setGeneratedOtp(''); setError('');
+        setNotice(null); setJustRegistered(false);
         setConfirmationResult(null); setIsTestNumber(false); setIsRegistering(false);
         setIsEmailSignup(false); setIsEmailLogin(false);
         setEmailOtpStep('details'); setEmailOtp('');
@@ -245,6 +259,47 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         } catch (e) { console.error('Recaptcha error:', e); cleanupRecaptcha(); }
     };
 
+    // Sends the OTP for a number that is registered: the mock/dev shortcut, or a real Firebase SMS.
+    const sendOtpNow = async (phoneNumber) => {
+        // Only take the mock/dev OTP shortcut when this build actually allows it
+        // (local dev, or a deployed env with VITE_ALLOW_TEST_LOGIN=true). The backend
+        // enforces the same rule (ALLOW_TEST_LOGIN in authController.js) and rejects
+        // isTest logins in production, so sending isTest:true here when ALLOW_TEST_LOGIN
+        // is false is exactly what was causing "Server returned 400" on the deployed site.
+        if (ALLOW_TEST_LOGIN) {
+            const randomOtp = TEST_CREDENTIALS[phoneNumber]?.otp || Math.floor(100000 + Math.random() * 900000).toString();
+            setGeneratedOtp(randomOtp);
+            setIsTestNumber(true);
+            setConfirmationResult({ isTestMode: true });
+            setStep('otp');
+            return;
+        }
+
+        // Real flow: send a genuine OTP via Firebase Phone Auth
+        setLoading(true);
+        try {
+            setupRecaptcha();
+            const appVerifier = window.recaptchaVerifier;
+            if (!appVerifier) throw new Error('Failed to initialize verification. Please refresh and try again.');
+            const result = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
+            setConfirmationResult(result);
+            setGeneratedOtp('');
+            setIsTestNumber(false);
+            setStep('otp');
+        } catch (err) {
+            console.error('Failed to send OTP:', err);
+            const msgs = {
+                'auth/too-many-requests': 'Too many attempts. Please try again later.',
+                'auth/invalid-phone-number': 'Please enter a valid 10-digit phone number.',
+                'auth/network-request-failed': 'Network error. Check your connection.',
+            };
+            setError(msgs[err.code] || 'Failed to send OTP. Please try again.');
+            cleanupRecaptcha();
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleSendOTP = async (e) => {
         if (e) e.preventDefault();
 
@@ -270,43 +325,40 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         const phoneNumber = `+91${phone}`;
         setError('');
 
-        // 3. Only take the mock/dev OTP shortcut when this build actually allows it
-        // (local dev, or a deployed env with VITE_ALLOW_TEST_LOGIN=true). The backend
-        // enforces the same rule (ALLOW_TEST_LOGIN in authController.js) and rejects
-        // isTest logins in production, so sending isTest:true here when ALLOW_TEST_LOGIN
-        // is false is exactly what was causing "Server returned 400" on the deployed site.
-        if (ALLOW_TEST_LOGIN) {
-            const randomOtp = TEST_CREDENTIALS[phoneNumber]?.otp || Math.floor(100000 + Math.random() * 900000).toString();
-            setGeneratedOtp(randomOtp);
-            setIsTestNumber(true);
-            setConfirmationResult({ isTestMode: true });
-            setStep('otp');
-            return;
+        // 3. Login: check the database first. Registered numbers go on to the OTP step;
+        // new numbers are sent to the registration form (their number stays filled in).
+        if (!isRegistering) {
+            setLoading(true);
+            let exists = false;
+            try {
+                const res = await authFetch('/auth/check-user', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: phoneNumber }),
+                });
+                if (!res.ok) throw new Error(await serverErrorMessage(res));
+                exists = (await res.json()).exists === true;
+            } catch (err) {
+                console.error('Check user error:', err);
+                // fetch() rejects with a TypeError when the server can't be reached at all
+                setError(err instanceof TypeError
+                    ? (import.meta.env.DEV
+                        ? `Cannot reach the backend at ${API_BASE}. Start it with "npm run dev" inside the backend folder.`
+                        : 'Could not reach the server. Please try again.')
+                    : (err.message || 'Could not check your number. Please try again.'));
+                setLoading(false);
+                return;
+            }
+            setLoading(false);
+
+            if (!exists) {
+                setNotice({ type: 'info', text: "You're a new user - please register first. Your number is already filled in below." });
+                setIsRegistering(true);
+                return;
+            }
         }
 
-        // 4. Real flow: send a genuine OTP via Firebase Phone Auth
-        setLoading(true);
-        try {
-            setupRecaptcha();
-            const appVerifier = window.recaptchaVerifier;
-            if (!appVerifier) throw new Error('Failed to initialize verification. Please refresh and try again.');
-            const result = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
-            setConfirmationResult(result);
-            setGeneratedOtp('');
-            setIsTestNumber(false);
-            setStep('otp');
-        } catch (err) {
-            console.error('Failed to send OTP:', err);
-            const msgs = {
-                'auth/too-many-requests': 'Too many attempts. Please try again later.',
-                'auth/invalid-phone-number': 'Please enter a valid 10-digit phone number.',
-                'auth/network-request-failed': 'Network error. Check your connection.',
-            };
-            setError(msgs[err.code] || 'Failed to send OTP. Please try again.');
-            cleanupRecaptcha();
-        } finally {
-            setLoading(false);
-        }
+        // 4. Registered number: send the OTP
+        await sendOtpNow(phoneNumber);
     };
 
     const handleVerifyOrRegister = async (e) => {
@@ -337,7 +389,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
             });
 
             if (!response.ok) {
-                throw new Error(`Server returned ${response.status}`);
+                throw new Error(await serverErrorMessage(response));
             }
 
             const data = await response.json();
@@ -406,7 +458,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
             const response = await authFetch('/auth/google-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) });
 
             if (!response.ok) {
-                throw new Error(`Server returned ${response.status}`);
+                throw new Error(await serverErrorMessage(response));
             }
 
             const data = await response.json();
@@ -563,9 +615,21 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                 } catch (fbErr) {
                     if (fbErr.code === 'auth/operation-not-allowed') isTestMode = true;
                     else if (fbErr.code === 'auth/email-already-in-use') {
+                        // The email already has a Firebase account. If it was created by an earlier attempt with
+                        // this same password, just sign in and carry on registering.
                         const { signInWithEmailAndPassword } = await import('firebase/auth');
-                        const cred = await signInWithEmailAndPassword(auth, formData.email, formData.password);
-                        idToken = await cred.user.getIdToken();
+                        try {
+                            const cred = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+                            idToken = await cred.user.getIdToken();
+                        } catch (signInErr) {
+                            // Otherwise the account belongs to someone/something else - most often it was created
+                            // by "Continue with Google" (no password) or with a different password. Say so plainly
+                            // instead of showing "Firebase: Error (auth/invalid-credential)".
+                            if (['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found'].includes(signInErr.code)) {
+                                throw Object.assign(new Error('This email is already registered.'), { code: 'auth/email-already-in-use' });
+                            }
+                            throw signInErr;
+                        }
                     }
                     else throw fbErr;
                 }
@@ -587,6 +651,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
 
             const data = await response.json();
             const isSellerSession = sellerLogin || startSellingFlow;
+            if (data.success && isRegistering && !isEmailSignup && !isGoogleRegistration && phone.length === 10) {
+                // Phone registration: the account now exists, but the person still has to prove they
+                // own the number - so take them to the OTP page instead of logging them in right away.
+                setJustRegistered(true);
+                setIsRegistering(false);
+                setNotice({ type: 'success', text: 'Registration successful! Enter the OTP below to log in.' });
+                await sendOtpNow(`+91${phone}`);
+                return;
+            }
             if (data.success) {
                 persistUser(data, {
                     phone: phone ? `+91${phone}` : null,
@@ -625,7 +698,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         } catch (err) {
             console.error('Registration Error:', err);
             const msg = err.code === 'auth/email-already-in-use'
-                ? 'This email is already registered. If you forgot your password, please use Forgot Password or login with other methods.'
+                ? 'This email is already registered - probably through Google sign-in or with a different password. Use "Continue with Google" below, or register with a different email.'
                 : err.code === 'auth/weak-password'
                     ? 'The password is too weak. Please use at least 6 characters.'
                     : err.code === 'auth/invalid-email'
@@ -640,7 +713,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
 
     const headerTitle = isEmailLogin ? 'Login with' : isEmailSignup ? 'Register with' : step === 'phone' ? (isRegistering ? 'Create' : 'Welcome to') : 'Verify';
     const headerBrand = isEmailSignup || isEmailLogin ? 'Email' : 'Goodkart';
-    const headerSub = isEmailLogin ? 'Enter your credentials to login' : isEmailSignup ? 'Create an account using your email' : step === 'phone' ? (isRegistering ? 'Fill in your details to get started' : 'Login to your account') : `OTP sent to +91 ${phone}`;
+    const headerSub = isEmailLogin ? 'Enter your credentials to login' : isEmailSignup ? 'Create an account using your email' : step === 'phone' ? (isRegistering ? 'Fill in your details to get started' : 'Login to your account') : `Enter the OTP for +91 ${phone}`;
     const HeaderIcon = isEmailSignup || isEmailLogin ? Mail : step === 'phone' ? UserIcon : ShieldCheck;
 
     return (
@@ -664,6 +737,31 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                         </div>
 
                         {error && <div className="auth-error-msg">{error}</div>}
+
+                        <AnimatePresence>
+                            {notice && !isEmailLogin && !isEmailSignup && (
+                                <motion.div
+                                    key={notice.type + notice.text}
+                                    initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: -8 }}
+                                    transition={{ duration: 0.25 }}
+                                    style={{
+                                        background: notice.type === 'success' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+                                        color: notice.type === 'success' ? '#15803d' : '#1d4ed8',
+                                        border: `1px solid ${notice.type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
+                                        padding: '0.65rem',
+                                        borderRadius: '12px',
+                                        marginBottom: '1.25rem',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 500,
+                                        textAlign: 'center',
+                                    }}
+                                >
+                                    {notice.text}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
 
                         {(isEmailLogin || isEmailSignup) ? (
                             <EmailAuthForm
@@ -699,7 +797,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                                 onVerify={handleVerifyOrRegister}
                                 onRegisterDirect={handleRegisterDirectly}
                                 onGoogleSignIn={handleGoogleSignIn}
-                                onChangePhone={() => { setStep('phone'); setOtp(''); setGeneratedOtp(''); setError(''); setLoading(false); }}
+                                onChangePhone={() => { setStep('phone'); setOtp(''); setGeneratedOtp(''); setError(''); setNotice(null); setLoading(false); }}
                                 onSwitchToEmailLogin={() => setIsEmailLogin(true)}
                             />
                         )}
@@ -707,8 +805,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                         {step === 'phone' && !isEmailSignup && !isEmailLogin && !hideRegister && (
                             <div className="auth-toggle">
                                 {isRegistering
-                                    ? <p>Already have an account? <button onClick={() => setIsRegistering(false)}>Login</button></p>
-                                    : <p>New User? <button onClick={() => setIsRegistering(true)}>Register</button></p>
+                                    ? <p>Already have an account? <button onClick={() => { setIsRegistering(false); setNotice(null); }}>Login</button></p>
+                                    : <p>New User? <button onClick={() => { setIsRegistering(true); setNotice(null); }}>Register</button></p>
                                 }
                             </div>
                         )}
