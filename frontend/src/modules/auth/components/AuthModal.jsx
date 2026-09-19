@@ -270,12 +270,43 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         const phoneNumber = `+91${phone}`;
         setError('');
 
-        // 3. Generate random 6-digit OTP to show in the OTP popup card
-        const randomOtp = TEST_CREDENTIALS[phoneNumber]?.otp || Math.floor(100000 + Math.random() * 900000).toString();
-        setGeneratedOtp(randomOtp);
-        setIsTestNumber(true);
-        setConfirmationResult({ isTestMode: true });
-        setStep('otp');
+        // 3. Only take the mock/dev OTP shortcut when this build actually allows it
+        // (local dev, or a deployed env with VITE_ALLOW_TEST_LOGIN=true). The backend
+        // enforces the same rule (ALLOW_TEST_LOGIN in authController.js) and rejects
+        // isTest logins in production, so sending isTest:true here when ALLOW_TEST_LOGIN
+        // is false is exactly what was causing "Server returned 400" on the deployed site.
+        if (ALLOW_TEST_LOGIN) {
+            const randomOtp = TEST_CREDENTIALS[phoneNumber]?.otp || Math.floor(100000 + Math.random() * 900000).toString();
+            setGeneratedOtp(randomOtp);
+            setIsTestNumber(true);
+            setConfirmationResult({ isTestMode: true });
+            setStep('otp');
+            return;
+        }
+
+        // 4. Real flow: send a genuine OTP via Firebase Phone Auth
+        setLoading(true);
+        try {
+            setupRecaptcha();
+            const appVerifier = window.recaptchaVerifier;
+            if (!appVerifier) throw new Error('Failed to initialize verification. Please refresh and try again.');
+            const result = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
+            setConfirmationResult(result);
+            setGeneratedOtp('');
+            setIsTestNumber(false);
+            setStep('otp');
+        } catch (err) {
+            console.error('Failed to send OTP:', err);
+            const msgs = {
+                'auth/too-many-requests': 'Too many attempts. Please try again later.',
+                'auth/invalid-phone-number': 'Please enter a valid 10-digit phone number.',
+                'auth/network-request-failed': 'Network error. Check your connection.',
+            };
+            setError(msgs[err.code] || 'Failed to send OTP. Please try again.');
+            cleanupRecaptcha();
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleVerifyOrRegister = async (e) => {
