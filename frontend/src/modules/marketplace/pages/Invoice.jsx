@@ -12,7 +12,7 @@ export default function Invoice() {
     const orderId = searchParams.get('orderId');
     const [order, setOrder] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [logoBase64, setLogoBase64] = useState('');
+    const [logoImages, setLogoImages] = useState({ icon: '', wordmark: '', tagline: '' });
 
     useEffect(() => {
         const fetchOrder = async () => {
@@ -51,17 +51,29 @@ export default function Invoice() {
     }, [orderId]);
 
     useEffect(() => {
-        // Preload logo as base64 so html2canvas can embed it in PDF
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            canvas.getContext('2d').drawImage(img, 0, 0);
-            setLogoBase64(canvas.toDataURL('image/png'));
-        };
-        img.src = '/goodkart-logo.png';
+        // Preload the exact logo artwork (icon + wordmark + tagline images)
+        // as base64 so html2canvas can embed them reliably in the PDF.
+        const toBase64 = (src) => new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/png'));
+            };
+            img.onerror = () => resolve('');
+            img.src = src;
+        });
+
+        Promise.all([
+            toBase64('/goodkart-icon-only.png'),
+            toBase64('/goodkart-wordmark.png'),
+            toBase64('/goodkart-tagline.png'),
+        ]).then(([icon, wordmark, tagline]) => {
+            setLogoImages({ icon, wordmark, tagline });
+        });
     }, []);
 
     useEffect(() => {
@@ -147,12 +159,10 @@ export default function Invoice() {
                 <p style={{ color: '#000', fontSize: '1rem', marginTop: '0.25rem', fontWeight: '600' }}>#{order.orderId || order.id}</p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <img src={logoBase64 || '/goodkart-logo.png'} alt="Goodkart" style={{ width: '55px', height: '55px', objectFit: 'contain' }} />
-                <span style={{ lineHeight: 1, letterSpacing: '-0.3px', display: 'flex', flexDirection: 'column' }}>
-                    <span>
-                        <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span style={{ fontSize: '1.6rem', fontWeight: 400, color: '#5BB8FF' }}>kart</span>
-                    </span>
-                    <span style={{ fontSize: '0.6rem', fontWeight: 600, color: '#1800AD', letterSpacing: '0.3px', textAlign: 'center', marginTop: '2px' }}>Good Deals. Good Life</span>
+                <img src={logoImages.icon || '/goodkart-icon-only.png'} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain', flexShrink: 0 }} />
+                <span style={{ lineHeight: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <img src={logoImages.wordmark || '/goodkart-wordmark.png'} alt="Goodkart" style={{ height: '22px', width: 'auto', objectFit: 'contain', display: 'block' }} />
+                    <img src={logoImages.tagline || '/goodkart-tagline.png'} alt="Good Deals. Good Life" style={{ height: '9px', width: 'auto', objectFit: 'contain', display: 'block', marginTop: '2px' }} />
                 </span>
             </div>
         </div>

@@ -1,19 +1,17 @@
 import { auth } from '@/modules/shared/config/firebase';
 
-// Always prefer the deployed backend URL from .env when one is set — this
-// is what makes `npm run dev` on your own machine work out of the box,
-// since there's no local backend server running on port 5000. Previously
-// this only applied in production builds; in dev it fell straight to
-// localhost:5000 regardless of .env, so every API call sat there waiting
-// on a server that was never running (and, depending on your firewall,
-// that can hang far longer than an instant "connection refused" — which
-// is what "taking so much time to load" was actually caused by).
-// If you DO want to run the backend locally, just leave VITE_API_BASE_URL
-// unset (or comment it out) in your local .env and it'll fall back to
-// localhost:5000 like before.
-export const API_BASE =
-    import.meta.env.VITE_API_BASE_URL ||
-    (import.meta.env.PROD ? 'https://sellsathi-refactored.onrender.com' : 'http://localhost:5000');
+// Where the API lives:
+//  - `npm run dev`  -> ALWAYS the local backend (http://localhost:5000). It runs with the
+//    goodkart Firebase credentials (backend/serviceAccountKey.json), so every login,
+//    registration and order lands in the goodkart database. This is decided here in code
+//    (not via .env) so a leftover VITE_API_BASE_URL - which still points at the old
+//    sellsathi backend - can never send dev traffic to the wrong database. Start the
+//    backend with `npm run dev` inside backend/ (or from the repo root, which starts both).
+//    Set VITE_DEV_API_URL only if you deliberately want dev to use a different backend.
+//  - production build -> VITE_API_BASE_URL from .env.
+export const API_BASE = import.meta.env.DEV
+    ? (import.meta.env.VITE_DEV_API_URL || 'http://localhost:5000')
+    : (import.meta.env.VITE_API_BASE_URL || 'https://sellsathi-refactored.onrender.com');
 
 /**
  * `fetch` with a hard timeout, so a stalled request (dead port, silent

@@ -211,7 +211,38 @@ const login = async (req, res) => {
         if (error.code === 8 || error.message?.includes('RESOURCE_EXHAUSTED')) {
             return res.status(503).json({ success: false, quotaExceeded: true, message: "Quota Exceeded." });
         }
-        return res.status(401).json({ success: false, message: "Authentication failed" });
+        // Only a token that fails verification is a real 401 (e.g. a token issued by a
+        // different Firebase project). Anything else - Firestore errors, a bug - used to be
+        // reported as "401 Authentication failed" too, which hid the real cause.
+        if (typeof error.code === 'string' && error.code.startsWith('auth/')) {
+            return res.status(401).json({ success: false, message: "Sign-in token could not be verified. The app and the server must use the same Firebase project (goodkart)." });
+        }
+        return res.status(500).json({ success: false, message: "Login failed on the server. Please check the backend logs." });
+    }
+};
+
+/**
+ * Tells the login screen whether a mobile number already belongs to a user, so existing
+ * users go on to the OTP step and new users are sent to the registration form first.
+ */
+const checkUser = async (req, res) => {
+    try {
+        const digits = String(req.body?.phone || '').replace(/\D/g, '').slice(-10);
+        if (digits.length !== 10) {
+            return res.status(400).json({ success: false, message: "A valid 10-digit mobile number is required" });
+        }
+
+        // Phone numbers are stored as "+91XXXXXXXXXX", but older records may lack the prefix.
+        const variants = [`+91${digits}`, digits, `91${digits}`];
+        const snap = await db.collection('users').where('phone', 'in', variants).limit(1).get();
+
+        return res.status(200).json({ success: true, exists: !snap.empty });
+    } catch (error) {
+        console.error("CHECK USER ERROR:", error);
+        if (error.code === 8 || error.message?.includes('RESOURCE_EXHAUSTED')) {
+            return res.status(503).json({ success: false, quotaExceeded: true, message: "Quota Exceeded." });
+        }
+        return res.status(500).json({ success: false, message: "Could not check this number. Please try again." });
     }
 };
 
@@ -680,4 +711,4 @@ const testLogin = async (req, res) => {
     }
 };
 
-module.exports = { login, register, applySeller, extractAadhar, uploadImage, testLogin, sendEmailOtp, checkSellerStatus };
+module.exports = { login, register, applySeller, extractAadhar, uploadImage, testLogin, sendEmailOtp, checkSellerStatus, checkUser };

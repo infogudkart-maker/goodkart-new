@@ -1,7 +1,8 @@
-/* Full-screen boot splash: pops in our own HTML wordmark + tagline
-   (guaranteed correct "Goodkart" spelling), then docks the icon onto the
-   real Navbar logo and fades away. Scoped under .intro-splash so nothing
-   here can leak into the rest of the app. */
+/* Full-screen boot splash: pops in the exact wordmark + tagline logo
+   artwork (image assets, not re-created text, so the brand mark is always
+   pixel-identical to the source logo), then docks the icon onto the real
+   Navbar logo and fades away. Scoped under .intro-splash so nothing here
+   can leak into the rest of the app. */
 
 .intro-splash {
     position: fixed;
@@ -108,33 +109,19 @@
 
 .intro-wordmark {
     margin-top: 10px;
-    font-family: 'Inter', sans-serif;
-    letter-spacing: -0.5px;
-    line-height: 1;
+    width: clamp(220px, 48vw, 340px);
+    height: auto;
+    object-fit: contain;
     opacity: 0;
     animation: introTextFadeUp 0.35s ease-out forwards;
     animation-delay: 0.15s;
 }
 
-.intro-wordmark-good {
-    font-size: clamp(2.4rem, 9vw, 3.6rem);
-    font-weight: 900;
-    color: #1800AD;
-}
-
-.intro-wordmark-kart {
-    font-size: clamp(2.4rem, 9vw, 3.6rem);
-    font-weight: 400;
-    color: #5BB8FF;
-}
-
 .intro-tagline {
-    margin-top: 2px;
-    font-family: 'Inter', sans-serif;
-    font-size: clamp(0.95rem, 2.8vw, 1.15rem);
-    font-weight: 600;
-    letter-spacing: 0.3px;
-    color: #1800AD;
+    margin-top: 4px;
+    width: clamp(150px, 34vw, 230px);
+    height: auto;
+    object-fit: contain;
     opacity: 0;
     animation: introTextFadeUp 0.4s ease-out forwards;
     animation-delay: 0.35s;

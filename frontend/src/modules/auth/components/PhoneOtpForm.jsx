@@ -1,4 +1,9 @@
-import { Phone, Lock, Eye, EyeOff, Mail, User as UserIcon, Calendar, ArrowRight, ShieldCheck } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Phone, Lock, Eye, EyeOff, Mail, User as UserIcon, Calendar, ArrowRight, ShieldCheck, Send, CheckCircle2 } from 'lucide-react';
+
+// How long the "Sending OTP..." animation plays before the (mock/dev) OTP code is revealed.
+const OTP_SEND_DELAY_MS = 2400;
 
 /**
  * PhoneOtpForm — handles the phone number entry + OTP verification steps.
@@ -30,6 +35,17 @@ export default function PhoneOtpForm({
     onSwitchToEmailLogin,
 }) {
     const dateMax = new Date().toISOString().split('T')[0];
+
+    // The on-screen (mock/dev) OTP is not shown instantly: a short "Sending OTP..." animation plays
+    // first, then the code is revealed. Real SMS OTPs (generatedOtp === '') skip this entirely.
+    const [otpRevealed, setOtpRevealed] = useState(false);
+    useEffect(() => {
+        setOtpRevealed(false);
+        if (step !== 'otp' || !generatedOtp) return undefined;
+        const timer = setTimeout(() => setOtpRevealed(true), OTP_SEND_DELAY_MS);
+        return () => clearTimeout(timer);
+    }, [step, generatedOtp]);
+    const waitingForOtp = step === 'otp' && !!generatedOtp && !otpRevealed;
 
     const registrationFields = (
         <>
@@ -134,39 +150,141 @@ export default function PhoneOtpForm({
                     /* OTP step */
                     <div className="auth-fields-grid">
                         {generatedOtp && (
-                            <div className="otp-popup-card" style={{
-                                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-                                border: '1.5px solid #7dd3fc',
-                                borderRadius: '1rem',
-                                padding: '1rem 0.85rem',
-                                textAlign: 'center',
-                                marginBottom: '0.5rem',
-                                boxShadow: '0 4px 14px rgba(14, 165, 233, 0.12)'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: '#0369a1', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                                    <ShieldCheck size={18} style={{ color: '#0284c7' }} />
-                                    <span>OTP Verification Code</span>
-                                </div>
-                                <div style={{
-                                    fontSize: '1.8rem',
-                                    fontWeight: 800,
-                                    letterSpacing: '0.3em',
-                                    color: '#0c4a6e',
-                                    fontFamily: 'monospace',
-                                    background: '#ffffff',
-                                    padding: '0.4rem 1rem',
-                                    borderRadius: '0.75rem',
-                                    border: '1.5px dashed #38bdf8',
-                                    display: 'inline-block',
-                                    margin: '0.2rem 0',
-                                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.03)'
-                                }}>
-                                    {generatedOtp}
-                                </div>
-                                <p style={{ fontSize: '0.78rem', color: '#0369a1', marginTop: '0.3rem', marginBottom: 0, fontWeight: 500 }}>
-                                    Please enter the code shown above to verify & sign in
-                                </p>
-                            </div>
+                            <AnimatePresence mode="wait">
+                                {!otpRevealed ? (
+                                    <motion.div
+                                        key="otp-sending"
+                                        className="otp-sending-card"
+                                        initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: -8, scale: 0.94 }}
+                                        transition={{ duration: 0.3 }}
+                                        style={{
+                                            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                                            border: '1.5px solid #bae6fd',
+                                            borderRadius: '1rem',
+                                            padding: '1.1rem 0.85rem',
+                                            textAlign: 'center',
+                                            marginBottom: '0.5rem',
+                                            boxShadow: '0 4px 14px rgba(14, 165, 233, 0.12)'
+                                        }}
+                                    >
+                                        {/* pulsing rings around a floating "send" icon */}
+                                        <div style={{ position: 'relative', width: 56, height: 56, margin: '0 auto 0.7rem' }}>
+                                            {[0, 1].map(i => (
+                                                <motion.span
+                                                    key={i}
+                                                    style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid #38bdf8' }}
+                                                    initial={{ scale: 0.7, opacity: 0.7 }}
+                                                    animate={{ scale: 1.8, opacity: 0 }}
+                                                    transition={{ duration: 1.6, repeat: Infinity, delay: i * 0.8, ease: 'easeOut' }}
+                                                />
+                                            ))}
+                                            <motion.div
+                                                animate={{ y: [0, -4, 0] }}
+                                                transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+                                                style={{
+                                                    position: 'relative', width: 56, height: 56, borderRadius: '50%',
+                                                    background: 'linear-gradient(135deg, #38bdf8, #0284c7)',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    boxShadow: '0 6px 16px rgba(2, 132, 199, 0.35)'
+                                                }}
+                                            >
+                                                <Send size={24} color="#ffffff" />
+                                            </motion.div>
+                                        </div>
+
+                                        <div style={{ color: '#0369a1', fontWeight: 600, fontSize: '0.9rem' }}>
+                                            Sending OTP to +91 {phone}
+                                        </div>
+
+                                        {/* bouncing dots */}
+                                        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, margin: '0.6rem 0 0.7rem' }}>
+                                            {[0, 1, 2].map(i => (
+                                                <motion.span
+                                                    key={i}
+                                                    style={{ width: 8, height: 8, borderRadius: '50%', background: '#0ea5e9', display: 'block' }}
+                                                    animate={{ y: [0, -7, 0], opacity: [0.4, 1, 0.4] }}
+                                                    transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15, ease: 'easeInOut' }}
+                                                />
+                                            ))}
+                                        </div>
+
+                                        {/* progress bar that fills while the OTP is "on its way" */}
+                                        <div style={{ height: 4, borderRadius: 4, background: 'rgba(14, 165, 233, 0.18)', overflow: 'hidden' }}>
+                                            <motion.div
+                                                initial={{ width: '0%' }}
+                                                animate={{ width: '100%' }}
+                                                transition={{ duration: OTP_SEND_DELAY_MS / 1000, ease: 'easeInOut' }}
+                                                style={{ height: '100%', borderRadius: 4, background: 'linear-gradient(90deg, #38bdf8, #0284c7)' }}
+                                            />
+                                        </div>
+                                    </motion.div>
+                                ) : (
+                                    <motion.div
+                                        key="otp-revealed"
+                                        className="otp-popup-card"
+                                        initial={{ opacity: 0, scale: 0.85, y: 16 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+                                        style={{
+                                            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                                            border: '1.5px solid #7dd3fc',
+                                            borderRadius: '1rem',
+                                            padding: '1rem 0.85rem',
+                                            textAlign: 'center',
+                                            marginBottom: '0.5rem',
+                                            boxShadow: '0 4px 14px rgba(14, 165, 233, 0.12)'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: '#0369a1', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+                                            <motion.span
+                                                initial={{ scale: 0, rotate: -90 }}
+                                                animate={{ scale: 1, rotate: 0 }}
+                                                transition={{ type: 'spring', stiffness: 400, damping: 12, delay: 0.1 }}
+                                                style={{ display: 'flex' }}
+                                            >
+                                                <CheckCircle2 size={18} style={{ color: '#16a34a' }} />
+                                            </motion.span>
+                                            <span>OTP sent - your verification code</span>
+                                        </div>
+                                        {/* digits flip in one after another, then the box gives a soft glow */}
+                                        <motion.div
+                                            animate={{ boxShadow: ['0 0 0 0 rgba(56, 189, 248, 0)', '0 0 0 8px rgba(56, 189, 248, 0.22)', '0 0 0 0 rgba(56, 189, 248, 0)'] }}
+                                            transition={{ duration: 1.1, delay: 0.25 + generatedOtp.length * 0.09, ease: 'easeOut' }}
+                                            style={{
+                                                fontSize: '1.8rem',
+                                                fontWeight: 800,
+                                                color: '#0c4a6e',
+                                                fontFamily: 'monospace',
+                                                background: '#ffffff',
+                                                padding: '0.4rem 1rem',
+                                                borderRadius: '0.75rem',
+                                                border: '1.5px dashed #38bdf8',
+                                                display: 'inline-flex',
+                                                gap: '0.35rem',
+                                                margin: '0.2rem 0',
+                                                perspective: 400
+                                            }}
+                                        >
+                                            {generatedOtp.split('').map((digit, i) => (
+                                                <motion.span
+                                                    key={i}
+                                                    initial={{ opacity: 0, y: 14, rotateX: -90 }}
+                                                    animate={{ opacity: 1, y: 0, rotateX: 0 }}
+                                                    transition={{ type: 'spring', stiffness: 300, damping: 16, delay: 0.25 + i * 0.09 }}
+                                                    style={{ display: 'inline-block' }}
+                                                >
+                                                    {digit}
+                                                </motion.span>
+                                            ))}
+                                        </motion.div>
+                                        <p style={{ fontSize: '0.78rem', color: '#0369a1', marginTop: '0.3rem', marginBottom: 0, fontWeight: 500 }}>
+                                            Please enter the code shown above to verify & sign in
+                                        </p>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         )}
 
                         <div className="otp-input-container">
@@ -176,10 +294,10 @@ export default function PhoneOtpForm({
                                 value={otp}
                                 onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                 required
-                                disabled={loading}
+                                disabled={loading || waitingForOtp}
                             />
                         </div>
-                        <button type="submit" className="auth-submit-btn" disabled={otp.length < 6 || loading}>
+                        <button type="submit" className="auth-submit-btn" disabled={otp.length < 6 || loading || waitingForOtp}>
                             {loading ? 'Verifying...' : (isRegistering ? 'Complete Registration' : 'Login')} <ArrowRight size={18} />
                         </button>
                         <button

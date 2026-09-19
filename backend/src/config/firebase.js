@@ -2,6 +2,11 @@
 const admin = require('firebase-admin');
 require('dotenv').config();
 
+// The ONLY Firebase project this backend may read from / write to.
+// Goodkart replaced the old 'sellsathi-94ede' project; every user, seller,
+// product, order and OTP record must live here and nowhere else.
+const FIREBASE_PROJECT_ID = 'goodkart';
+
 let serviceAccount;
 
 try {
@@ -44,11 +49,23 @@ try {
     process.exit(1);
 }
 
+// Fail fast if the credentials (serviceAccountKey.json locally, or the
+// FIREBASE_SERVICE_ACCOUNT env var on the host) belong to another project,
+// e.g. the old sellsathi one. Without this check the Admin SDK would happily
+// keep saving data to - and verifying login tokens against - the wrong project.
+if (serviceAccount.project_id !== FIREBASE_PROJECT_ID) {
+    console.error(`❌ Firebase credentials are for project "${serviceAccount.project_id}", but this backend must use "${FIREBASE_PROJECT_ID}".`);
+    console.error('   Local dev: put the goodkart service account key in backend/serviceAccountKey.json.');
+    console.error('   Hosted:    set FIREBASE_SERVICE_ACCOUNT to the goodkart service account key.');
+    process.exit(1);
+}
+
 if (!admin.apps.length) {
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        projectId: 'sellsathi-94ede',
+        projectId: FIREBASE_PROJECT_ID,
     });
+    console.log(`🔥 Firebase Admin connected to project: ${FIREBASE_PROJECT_ID}`);
 }
 
 const db = admin.firestore();

@@ -15,20 +15,34 @@ import CartNotification from '@/modules/shared/components/common/CartNotificatio
 import WishlistNotification from '@/modules/shared/components/common/WishlistNotification';
 import './Navbar.css';
 
+// Renders the exact Goodkart logo artwork (icon + wordmark + tagline) as
+// image assets — no re-created/approximated text — so the mark on screen is
+// always a pixel-perfect copy of the brand logo files, at every viewport
+// size. `clamp()` scales each piece fluidly for mobile instead of relying
+// on breakpoints.
 function GoodkartLogo() {
     return (
-        <div className="goodkart-logo" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="goodkart-logo" style={{ display: 'flex', alignItems: 'center', gap: 'clamp(6px, 1.6vw, 10px)', minWidth: 0 }}>
             <img
-                src="/goodkart-logo.png"
-                alt="Goodkart logo"
+                src="/goodkart-icon-only.png"
+                alt=""
+                aria-hidden="true"
                 className="goodkart-logo-img"
-                style={{ height: '64px', width: 'auto', objectFit: 'contain' }}
+                style={{ height: 'clamp(36px, 8vw, 56px)', width: 'auto', objectFit: 'contain', display: 'block', flexShrink: 0 }}
             />
-            <span className="goodkart-logo-text" style={{ fontFamily: "'Outfit', 'Manrope', sans-serif", lineHeight: 1, letterSpacing: '-0.5px', display: 'flex', flexDirection: 'column' }}>
-                <span>
-                    <span className="goodkart-logo-name" style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span className="goodkart-logo-name" style={{ fontSize: '2rem', fontWeight: 700, color: '#5BB8FF' }}>kart</span>
-                </span>
-                <span className="goodkart-logo-tagline" style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1800AD', letterSpacing: '0.5px', marginTop: '2px', textAlign: 'center', textTransform: 'uppercase' }}>Good Deals. Good Life</span>
+            <span style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+                <img
+                    src="/goodkart-wordmark.png"
+                    alt="Goodkart"
+                    className="goodkart-logo-wordmark-img"
+                    style={{ height: 'clamp(20px, 4.4vw, 30px)', width: 'auto', maxWidth: '100%', objectFit: 'contain', display: 'block' }}
+                />
+                <img
+                    src="/goodkart-tagline.png"
+                    alt="Good Deals. Good Life"
+                    className="goodkart-logo-tagline-img"
+                    style={{ height: 'clamp(8px, 1.7vw, 12px)', width: 'auto', maxWidth: '100%', objectFit: 'contain', display: 'block', marginTop: '2px' }}
+                />
             </span>
         </div>
     );

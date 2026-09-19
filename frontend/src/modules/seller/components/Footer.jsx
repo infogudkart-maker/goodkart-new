@@ -9,12 +9,10 @@ const Footer = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-12">
           <div className="lg:col-span-1">
             <Link to="/" className="flex items-center gap-3 mb-4">
-              <img src="/goodkart-logo.png" alt="Goodkart logo" style={{ height: '64px', width: 'auto', objectFit: 'contain' }} />
-              <span style={{ fontFamily: "'Outfit', 'Manrope', sans-serif", lineHeight: 1, letterSpacing: '-0.5px', display: 'flex', flexDirection: 'column' }}>
-                <span>
-                  <span style={{ fontSize: '2rem', fontWeight: 900, color: '#1800AD' }}>Good</span><span style={{ fontSize: '2rem', fontWeight: 700, color: '#5BB8FF' }}>kart</span>
-                </span>
-                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1800AD', letterSpacing: '0.5px', marginTop: '2px', textAlign: 'center', textTransform: 'uppercase' }}>Good Deals. Good Life</span>
+              <img src="/goodkart-icon-only.png" alt="" aria-hidden="true" style={{ height: 'clamp(36px, 8vw, 56px)', width: 'auto', objectFit: 'contain', flexShrink: 0 }} />
+              <span style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+                <img src="/goodkart-wordmark.png" alt="Goodkart" style={{ height: 'clamp(20px, 4.4vw, 30px)', width: 'auto', maxWidth: '100%', objectFit: 'contain', display: 'block' }} />
+                <img src="/goodkart-tagline.png" alt="Good Deals. Good Life" style={{ height: 'clamp(8px, 1.7vw, 12px)', width: 'auto', maxWidth: '100%', objectFit: 'contain', display: 'block', marginTop: '2px' }} />
               </span>
             </Link>
             <p className="text-gray-600 text-sm leading-relaxed mb-6">
