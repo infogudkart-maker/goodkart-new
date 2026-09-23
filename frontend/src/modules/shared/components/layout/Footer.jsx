@@ -178,8 +178,10 @@ export default function Footer() {
                     </div>
 
                     <div style={{ marginTop: '4rem', paddingTop: '2rem', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-                        <p className="text-muted" style={{ fontSize: '0.85rem', fontWeight: 500 }}>&copy; 2026 S S Inphinite LLP. All rights reserved.</p>
-                    </div>
+    <p className="text-muted" style={{ fontSize: '0.85rem', fontWeight: 500 }}>
+        &copy; 2026 Madhwa Infotech &amp; S S Inphinite LLP. All rights reserved.
+    </p>
+</div>
                 </div>
             </footer>
 
