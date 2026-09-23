@@ -63,6 +63,8 @@ export default function Footer() {
                 }}
             >
                 <div className="container">
+
+                    {/* Main Footer Grid */}
                     <div
                         style={{
                             display: 'grid',
@@ -136,7 +138,9 @@ export default function Footer() {
 
                             <p
                                 className="text-muted"
-                                style={{ lineHeight: 1.6 }}
+                                style={{
+                                    lineHeight: 1.6,
+                                }}
                             >
                                 The future of global marketplace. Fast, secure,
                                 and seller-friendly.
@@ -458,44 +462,98 @@ export default function Footer() {
                         </div>
                     </div>
 
-                    {/* Footer Bottom */}
+                    {/* Footer Bottom Section */}
                     <div
                         style={{
                             marginTop: '4rem',
-                            paddingTop: '2rem',
+                            paddingTop: '1.75rem',
                             borderTop: '1px solid var(--border)',
-                            textAlign: 'center',
                         }}
                     >
-                        <p
-                            className="text-muted"
+                        <div
                             style={{
-                                fontSize: '0.85rem',
-                                fontWeight: 500,
-                                marginBottom: '0.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '1.5rem',
+                                flexWrap: 'wrap',
                             }}
                         >
-                            &copy; 2026 Madhwa Infotech &amp; S S Inphinite LLP.
-                            All rights reserved.
-                        </p>
+                            {/* Copyright - Left Side */}
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    minWidth: 0,
+                                }}
+                            >
+                                <span
+                                    className="text-muted"
+                                    style={{
+                                        fontSize: '0.8rem',
+                                        fontWeight: 500,
+                                        lineHeight: 1.5,
+                                    }}
+                                >
+                                    &copy; 2026 Madhwa Infotech &amp; S S
+                                    Inphinite LLP. All rights reserved.
+                                </span>
+                            </div>
 
-                        <p
-                            className="text-muted"
-                            style={{
-                                fontSize: '0.8rem',
-                                fontWeight: 500,
-                                margin: 0,
-                            }}
-                        >
-                            Developed and Maintained by{' '}
-                            <span style={{ fontWeight: 700 }}>
-                                Madhwa Infotech
-                            </span>{' '}
-                            &amp;{' '}
-                            <span style={{ fontWeight: 700 }}>
-                                Vinidra Softech
-                            </span>
-                        </p>
+                            {/* Developed & Maintained - Right Side */}
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'flex-end',
+                                    gap: '0.35rem',
+                                    flexWrap: 'wrap',
+                                    textAlign: 'right',
+                                }}
+                            >
+                                <span
+                                    className="text-muted"
+                                    style={{
+                                        fontSize: '0.8rem',
+                                        fontWeight: 500,
+                                        lineHeight: 1.5,
+                                    }}
+                                >
+                                    Developed &amp; Maintained by
+                                </span>
+
+                                <span
+                                    style={{
+                                        fontSize: '0.8rem',
+                                        fontWeight: 700,
+                                        lineHeight: 1.5,
+                                    }}
+                                >
+                                    Madhwa Infotech
+                                </span>
+
+                                <span
+                                    className="text-muted"
+                                    style={{
+                                        fontSize: '0.8rem',
+                                        fontWeight: 500,
+                                    }}
+                                >
+                                    &amp;
+                                </span>
+
+                                <span
+                                    style={{
+                                        fontSize: '0.8rem',
+                                        fontWeight: 700,
+                                        lineHeight: 1.5,
+                                    }}
+                                >
+                                    Vinidra Softech
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </footer>
