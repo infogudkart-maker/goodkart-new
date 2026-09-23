@@ -1,10 +1,10 @@
 import './PolicyPage.css';
 
-const EFFECTIVE_DATE = '27 March 2026';
-const LAST_UPDATED = '27 March 2026';
-const COMPANY = 'Goodkart';
+const EFFECTIVE_DATE = '23 September 2026';
+const LAST_UPDATED = '23 September 2026';
+const COMPANY = ' Madhwa Infotech & S S Inphinite LLP';
 const OFFICE = 'Bangalore';
-const EMAIL = 'sumanhp31@gmail.com';
+const EMAIL = ' business@madhwainfotech.com';
 const CITY_STATE = 'Bangalore, Karnataka, India';
 
 export default function TermsOfUse() {
