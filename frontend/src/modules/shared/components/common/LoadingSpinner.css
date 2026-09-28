@@ -1,0 +1,147 @@
+/* Loading Fullscreen Container */
+.loading-fullscreen-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #FFFFFF;
+    z-index: 9999;
+}
+
+.loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+/* Loading Container (Centered in parent) */
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    min-height: 300px;
+}
+
+/* Simple Spinner */
+.loading-spinner-simple {
+    border-radius: 50%;
+    border: 3px solid #E5E7EB;
+    border-top-color: #3B7CF1;
+    animation: spin 0.8s linear infinite;
+}
+
+.loading-spinner-simple.spinner-small {
+    width: 24px;
+    height: 24px;
+    border-width: 2px;
+}
+
+.loading-spinner-simple.spinner-medium {
+    width: 40px;
+    height: 40px;
+    border-width: 3px;
+}
+
+.loading-spinner-simple.spinner-large {
+    width: 56px;
+    height: 56px;
+    border-width: 4px;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Loading Message */
+.loading-message {
+    font-size: 15px;
+    font-weight: 500;
+    color: #6B7280;
+    margin: 0;
+}
+
+/* Inline Loading (for buttons, etc.) */
+.loading-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.loading-message-inline {
+    font-size: 14px;
+    font-weight: 500;
+    color: #6B7280;
+}
+
+/* Skeleton Loader for Product Cards */
+.skeleton-card {
+    background: #FFFFFF;
+    border-radius: 12px;
+    padding: 12px;
+    border: 2px solid #F3F4F6;
+    animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-image {
+    width: 100%;
+    height: 170px;
+    background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%);
+    background-size: 200% 100%;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    animation: shimmer 1.5s infinite;
+}
+
+.skeleton-text {
+    height: 12px;
+    background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%);
+    background-size: 200% 100%;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    animation: shimmer 1.5s infinite;
+}
+
+.skeleton-text.short {
+    width: 60%;
+}
+
+.skeleton-text.medium {
+    width: 80%;
+}
+
+.skeleton-text.long {
+    width: 100%;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+@keyframes skeletonPulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+
+

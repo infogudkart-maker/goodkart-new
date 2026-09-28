@@ -1,0 +1,143 @@
+'use strict';
+const { admin, db } = require('../../../config/firebase');
+const cache = require('../../../utils/cache');
+
+const REVIEWS_CACHE_TTL = 300; // 5 minutes in seconds
+
+/**
+ * Handle new product review submission.
+ */
+const submitReview = async (req, res) => {
+    try {
+        const { productId, orderId, rating, title, body, images } = req.body;
+        const userId = req.user.uid;
+
+        if (!productId || !rating || !title || !body) return res.status(400).json({ success: false, message: "Missing fields" });
+
+        // Check if user has already reviewed this product (prevent duplicate reviews)
+        const existingReview = await db.collection("reviews")
+            .where("userId", "==", userId)
+            .where("productId", "==", productId)
+            .limit(1)
+            .get();
+
+        if (!existingReview.empty) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "You have already reviewed this product. Only one review per product is allowed." 
+            });
+        }
+
+        const userDoc = await db.collection("users").doc(userId).get();
+        const userData = userDoc.exists ? userDoc.data() : {};
+        const customerName = userData.name || userData.fullName || "Anonymous";
+
+        const productDoc = await db.collection("products").doc(productId).get();
+        const productData = productDoc.exists ? productDoc.data() : {};
+        const productName = productData.title || "Unknown Product";
+
+        const reviewData = {
+            productId, orderId: orderId || null, userId, customerName, productName,
+            rating: parseInt(rating), title, body, 
+            images: images || [], // Save review images
+            verified: orderId ? true : false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(), status: "active"
+        };
+
+        const reviewRef = await db.collection("reviews").add(reviewData);
+
+        // Calculate new average rating for the product
+        const allReviewsSnap = await db.collection("reviews")
+            .where("productId", "==", productId)
+            .where("status", "==", "active")
+            .get();
+        
+        let totalRating = 0;
+        let reviewCount = 0;
+        allReviewsSnap.forEach(doc => {
+            const reviewData = doc.data();
+            totalRating += reviewData.rating || 0;
+            reviewCount++;
+        });
+        
+        const averageRating = reviewCount > 0 ? totalRating / reviewCount : 0;
+        
+        // Update product with new rating and review count
+        await db.collection("products").doc(productId).update({
+            rating: parseFloat(averageRating.toFixed(1)),
+            reviewCount: reviewCount,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Invalidate review cache for this product and admin cache
+        cache.invalidate(`reviews_${productId}`, 'adminAllReviews', 'adminStats');
+
+        return res.status(200).json({ success: true, message: "Review submitted", reviewId: reviewRef.id });
+    } catch (error) {
+        console.error("[SubmitReview] ERROR:", error);
+        return res.status(500).json({ success: false, message: "Review submission failed" });
+    }
+};
+
+/**
+ * Get reviews for a specific product.
+ * Cached per product for 5 minutes.
+ */
+const getProductReviews = async (req, res) => {
+    try {
+        const { productId } = req.params;
+        const cacheKey = `reviews_${productId}`;
+        const cached = cache.get(cacheKey);
+        if (cached) return res.status(200).json({ success: true, reviews: cached });
+
+        const reviewsSnap = await db.collection("reviews").where("productId", "==", productId).where("status", "==", "active").get();
+        const reviews = reviewsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        reviews.sort((a, b) => (b.createdAt?.toDate?.() || 0) - (a.createdAt?.toDate?.() || 0));
+
+        cache.set(cacheKey, reviews, REVIEWS_CACHE_TTL);
+        return res.status(200).json({ success: true, reviews });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: "Failed to fetch reviews" });
+    }
+};
+
+/**
+ * Check if a user is eligible to review a specific product.
+ */
+const checkEligibility = async (req, res) => {
+    try {
+        const { productId } = req.params;
+        const uid = req.user.uid;
+
+        const snapshot = await db.collection("orders")
+            .where("userId", "==", uid)
+            .where("status", "==", "Delivered")
+            .get();
+
+        let eligible = false;
+        let eligibleOrder = null;
+
+        for (const doc of snapshot.docs) {
+            const data = doc.data();
+            const item = (data.items || []).find(i => (i.productId === productId || i.id === productId));
+            if (item) {
+                eligible = true;
+                eligibleOrder = {
+                    orderId: data.orderId || doc.id,
+                    productId: item.productId || item.id,
+                    productName: item.name,
+                    productImage: item.imageUrl || item.image,
+                    deliveredAt: data.deliveredAt || data.updatedAt || data.createdAt
+                };
+                break;
+            }
+        }
+
+        return res.status(200).json({ success: true, eligible, order: eligibleOrder });
+    } catch (error) {
+        console.error("[ReviewEligibility] ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to check eligibility" });
+    }
+};
+
+module.exports = { submitReview, getProductReviews, checkEligibility };

@@ -1,0 +1,175 @@
+/* Full-screen boot splash: pops in the exact wordmark + tagline logo
+   artwork (image assets, not re-created text, so the brand mark is always
+   pixel-identical to the source logo), then docks the icon onto the real
+   Navbar logo and fades away. Scoped under .intro-splash so nothing here
+   can leak into the rest of the app. */
+
+.intro-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: #EDEDED;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    /* Fading the background (not the whole overlay's opacity) means any
+       child that needs to stay fully visible while the overlay clears —
+       the docking logo icon — isn't dragged down to transparent with it.
+
+       The delay is the actual fix for "popping twice" — see the long
+       comment on .intro-logo-icon--docking below for the real cause. This
+       stays fully opaque (hiding the real Navbar and its logo underneath)
+       for the first 320ms of exit, while the icon does almost its entire
+       flight in private, then clears in a quick 130ms right at the end —
+       by which point the icon has already essentially landed on the real
+       logo's position. Total (320+130=450ms) matches EXIT_DURATION in the
+       JS, so this finishes exactly as the splash unmounts. */
+    transition: background-color 130ms ease-out 320ms;
+}
+
+.intro-splash--exit {
+    background-color: transparent;
+}
+
+/* Sized to comfortably fit the logo group on any viewport, including small
+   phone screens, with room to breathe on the sides. */
+.intro-stage {
+    position: relative;
+    width: min(90vw, 480px);
+    min-height: clamp(180px, 40vh, 280px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ---------- logo reveal ---------- */
+.intro-logo-group {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 16px;
+    max-width: 100%;
+}
+
+.intro-logo-icon {
+    width: clamp(130px, 30vw, 210px);
+    height: auto;
+    object-fit: contain;
+    opacity: 0;
+    /* Deliberately no bounce/overshoot here (a springy curve was previously
+       used) — it grew slightly past full size and sprang back down to
+       settle, which read as a second, smaller pop right on the heels of
+       the first. This curve only ever approaches 1, so it's one clean
+       grow-and-stop motion. */
+    animation: introLogoFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    filter: drop-shadow(0 10px 18px rgba(24, 0, 173, 0.14));
+}
+
+/* Applied (via JS, on the entrance animation's `animationend`) once the
+   fade/scale-in has actually finished — swaps off the animation onto a
+   plain style with the exact same rendered values, well before exit ever
+   touches these properties. A browser won't smoothly animate a property
+   away from a forwards-filled animation if the animation is removed and
+   the value changed in the same update, which is exactly what exit needs
+   to do — settling here first means exit's later change is an ordinary,
+   transitionable one instead of an instant snap. */
+.intro-logo-icon.intro-settled {
+    animation: none;
+    opacity: 1;
+    transform: none;
+}
+
+/* During exit, the icon flies to the real Navbar logo's position instead of
+   fading out with the rest of the overlay — the inline `transform` (set
+   from JS, computed from the real logo's live position) drives where it
+   ends up; this just turns on the transition. Opacity is deliberately left
+   alone: the icon needs to stay fully visible the whole way there.
+
+   Real root cause of the "popping twice" report, found by scrubbing the
+   user's own screen recording frame by frame: the real Navbar (with its
+   own logo, already fully opaque) sits mounted *underneath* the splash the
+   entire time. The background-color transition below used to run on the
+   same timeline as this transform — so as the background faded, the real
+   navbar logo started showing through while this icon was still mid-flight
+   and nowhere near the target yet. For a chunk of every exit, there were
+   genuinely two logos on screen at once: the stationary real one and this
+   one still traveling toward it. That's the actual "second pop" — not an
+   easing/timing feel issue like the previous fix assumed. See the
+   transition-delay on .intro-splash below for the other half of the fix:
+   the background now stays fully opaque until the icon has essentially
+   already landed, so the handoff happens with only one logo ever visible. */
+.intro-logo-icon--docking {
+    transition: transform 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.intro-wordmark {
+    margin-top: 10px;
+    width: clamp(220px, 48vw, 340px);
+    height: auto;
+    object-fit: contain;
+    opacity: 0;
+    animation: introTextFadeUp 0.35s ease-out forwards;
+    animation-delay: 0.15s;
+}
+
+.intro-tagline {
+    margin-top: 4px;
+    width: clamp(150px, 34vw, 230px);
+    height: auto;
+    object-fit: contain;
+    opacity: 0;
+    animation: introTextFadeUp 0.4s ease-out forwards;
+    animation-delay: 0.35s;
+}
+
+/* Same settling idea as the icon above — matches each element's own
+   entrance animation's final value exactly, so nothing visibly changes
+   here; it just frees `opacity` up to transition normally later. */
+.intro-wordmark.intro-settled,
+.intro-tagline.intro-settled {
+    animation: none;
+    opacity: 1;
+}
+
+/* The wordmark/tagline don't have anywhere to dock, so on exit they just
+   fade. `animation: none` here too is a defensive fallback in case exit
+   ever fires before settling has happened (e.g. unusually fast timing). */
+.intro-splash--exit .intro-wordmark,
+.intro-splash--exit .intro-tagline {
+    animation: none;
+    opacity: 0;
+    /* Shorter than the icon's flight, no delay — these have nowhere to
+       dock, so they should just be gone well before the background starts
+       clearing at 320ms (see .intro-splash above), not still fading when
+       the real page becomes visible underneath. */
+    transition: opacity 220ms ease-in;
+}
+
+@keyframes introLogoFadeIn {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes introTextFadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* The JS already skips straight to the 'reveal' phase for reduced-motion
+       users (the video phase is never entered), but the fade-in animations
+       below would still add a bit of motion on top of that — turn them off
+       and show the final state immediately. */
+    .intro-logo-icon,
+    .intro-wordmark,
+    .intro-tagline {
+        animation: none !important;
+        opacity: 1 !important;
+        transform: none !important;
+    }
+}

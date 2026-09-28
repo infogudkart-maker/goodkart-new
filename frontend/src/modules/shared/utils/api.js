@@ -1,0 +1,160 @@
+import { auth } from '@/modules/shared/config/firebase';
+
+// Where the API lives:
+//  - `npm run dev`  -> ALWAYS the local backend (http://localhost:5000). It runs with the
+//    goodkart Firebase credentials (backend/serviceAccountKey.json), so every login,
+//    registration and order lands in the goodkart database. This is decided here in code
+//    (not via .env) so a leftover VITE_API_BASE_URL - which still points at the old
+//    sellsathi backend - can never send dev traffic to the wrong database. Start the
+//    backend with `npm run dev` inside backend/ (or from the repo root, which starts both).
+//    Set VITE_DEV_API_URL only if you deliberately want dev to use a different backend.
+//  - production build -> VITE_API_BASE_URL from .env.
+export const API_BASE = import.meta.env.DEV
+    ? (import.meta.env.VITE_DEV_API_URL || 'http://localhost:5000')
+    : (import.meta.env.VITE_API_BASE_URL || 'https://sellsathi-refactored.onrender.com');
+
+/**
+ * `fetch` with a hard timeout, so a stalled request (dead port, silent
+ * firewall drop, a cold-starting Render backend that never comes back)
+ * fails with a clear error instead of hanging the caller — and the UI —
+ * forever. Plain `fetch` has no built-in timeout at all.
+ *
+ * @param {string} url
+ * @param {RequestInit} options - standard fetch options
+ * @param {number} timeoutMs - default 25s (covers a Render free-tier cold start)
+ */
+export async function fetchWithTimeout(url, options = {}, timeoutMs = 25000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s: ${url}`);
+        }
+        throw err;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
+ * Authenticated fetch wrapper.
+ *
+ * PRIORITY ORDER:
+ * 1. If the stored user is a test-login user (uid starts with "test_"):
+ *    → Always send X-Test-UID. Ignore Firebase Auth entirely.
+ *      This prevents stale Firebase sessions from sending expired Bearer tokens
+ *      when the actual logged-in user is a test credential user.
+ *
+ * 2. If a real Firebase Auth session exists (auth.currentUser):
+ *    → Force-refresh the ID token (prevents 401 from expired tokens)git 
+ *    → Send Authorization: Bearer <token>
+ *    → If refresh fails, fall back to X-Test-UID from localStorage
+ *
+ * 3. No Firebase session, non-test user in localStorage:
+ *    → Send X-Test-UID from localStorage uid
+ *
+ * @param {string} path - API path (e.g. '/admin/stats')
+ * @param {object} options - Standard fetch options (method, body, etc.)
+ * @returns {Promise<Response>}
+ */
+/**
+ * Reads the locally-stored user object for the current login context
+ * ('seller_user' when a seller session is active, 'user' otherwise), with the
+ * same seller->consumer fallback used by authFetch.
+ */
+function getStoredUser() {
+    try {
+        const loginCtx = sessionStorage.getItem('loginContext');
+        const storageKey = loginCtx === 'SELLER' ? 'seller_user' : 'user';
+        let localUser = JSON.parse(localStorage.getItem(storageKey));
+        if (!localUser && storageKey === 'seller_user') {
+            localUser = JSON.parse(localStorage.getItem('user'));
+        }
+        return localUser;
+    } catch (_) {
+        return null;
+    }
+}
+
+/**
+ * Returns the effective logged-in user, or null if nobody is logged in.
+ *
+ * `auth.currentUser` (Firebase) only reflects a REAL Firebase Auth session -
+ * email/password, Google, and a genuine Firebase phone-OTP sign-in all set it.
+ * The mock/dev phone-OTP shortcut (ALLOW_TEST_LOGIN, see AuthModal.jsx) never
+ * signs the user into Firebase at all - it only saves them to localStorage - so
+ * code that gates "am I logged in?" on `auth.currentUser` alone incorrectly
+ * treats every one of those phone-number logins as logged out. This checks
+ * both, preferring the real Firebase user's fields when one exists.
+ */
+export function getCurrentUser() {
+    const stored = getStoredUser();
+    if (auth.currentUser) {
+        return {
+            ...stored,
+            uid: auth.currentUser.uid,
+            email: auth.currentUser.email || stored?.email || '',
+            phoneNumber: auth.currentUser.phoneNumber || stored?.phone || '',
+        };
+    }
+    if (stored?.uid) {
+        return { ...stored, phoneNumber: stored.phone || '' };
+    }
+    return null;
+}
+
+export async function authFetch(path, options = {}) {
+    const url = `${API_BASE}${path}`;
+    const headers = { ...options.headers };
+    if (!(options.body instanceof FormData) && !headers['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
+    }
+
+    // Read stored user from localStorage using context-aware key
+    let localUser = null;
+    try {
+        const loginCtx = sessionStorage.getItem('loginContext');
+        const storageKey = loginCtx === 'SELLER' ? 'seller_user' : 'user';
+        localUser = JSON.parse(localStorage.getItem(storageKey));
+
+        // Fallback: If we're in SELLER context but no seller_user exists yet (e.g. during onboarding),
+        // try to use the regular 'user' credentials.
+        if (!localUser && storageKey === 'seller_user') {
+            localUser = JSON.parse(localStorage.getItem('user'));
+        }
+    } catch (_) { /* ignore parse errors */ }
+
+    // ── PATH 1: Test-login user ───────────────────────────────────────────────
+    // UIDs generated by /auth/test-login always start with "test_".
+    // If that's what's stored, always send X-Test-UID — never a Firebase token.
+    // This prevents a stale Firebase Auth session from hijacking test-user requests.
+    if (localUser?.uid?.startsWith('test_')) {
+        headers['X-Test-UID'] = localUser.uid;
+        return fetch(url, { ...options, headers });
+    }
+
+    // ── PATH 2: Real Firebase Auth session ────────────────────────────────────
+    const currentUser = auth.currentUser;
+    // If Firebase has a user, prioritized sending the real token
+    if (currentUser) {
+        try {
+            // Force-refresh to ensure we don't send an expired token
+            const idToken = await currentUser.getIdToken(true);
+            headers['Authorization'] = `Bearer ${idToken}`;
+            return fetch(url, { ...options, headers });
+        } catch (err) {
+            console.warn('[authFetch] Firebase token refresh failed, attempting fallback:', err.message);
+        }
+    }
+
+    // ── PATH 3: Fallback — use stored UID (for Test Users or before Firebase Init) ──────────────────
+    if (localUser?.uid) {
+        // If it's a test user, Path 1 would have caught it. 
+        // If we're here, it's a regular user whose Firebase session hasn't loaded yet.
+        headers['X-Test-UID'] = localUser.uid;
+    }
+
+    return fetch(url, { ...options, headers });
+}

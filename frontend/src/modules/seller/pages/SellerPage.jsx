@@ -1,0 +1,185 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import SellerHeader from '../components/SellerHeader';
+import Footer from '../components/Footer';
+import StatsSection from '../components/StatsSection';
+import './SellerPage.css';
+import WhyGoodkart from '../components/WhySellSathi';
+import HowItWorks from '../components/HowItWorks';
+import Testimonials from '../components/Testimonials';
+import PopularSellerCategories from '../components/PopularSellerCategories';
+import AuthModal from '@/modules/auth/components/AuthModal';
+import { ArrowRight, BookOpen, Truck, Rocket, BarChart3, Mail, Zap, Play } from 'lucide-react';
+
+export const SellerPage = () => {
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isStartSellingOpen, setIsStartSellingOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Auto-open seller login if redirected here with ?login=true
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('login') === 'true') {
+      setIsLoginOpen(true);
+      navigate('/seller', { replace: true });
+    }
+  }, [location.search]);
+
+  const handleNewSellerClick = (e) => {
+    e?.preventDefault();
+    setIsStartSellingOpen(true);
+  };
+
+  return (
+    <div className="seller-page min-h-screen bg-white">
+      <SellerHeader onLoginClick={() => setIsLoginOpen(true)} onNewSellerClick={handleNewSellerClick} />
+
+      {/* Hero Section */}
+      <section id="sell-online" className="relative pt-16 pb-24 lg:pt-24 lg:pb-32 overflow-hidden bg-gradient-to-b from-brand/5 to-white">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex-1 text-center lg:text-left"
+            >
+              <h1 className="hero-title text-4xl text-gray-900 mb-6">
+                Sell Online to Crores of Customers at <span className="text-brand">0% Commission</span>
+              </h1>
+              <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto lg:mx-0">
+                Become a Goodkart seller and grow your business across India.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 mb-6">
+                <button
+                  onClick={handleNewSellerClick}
+                  className="w-full sm:w-auto px-10 py-4 rounded-2xl bg-brand text-white font-bold text-lg shadow-xl shadow-brand/20 hover:bg-brand-hover hover:-translate-y-1 transition-all"
+                >
+                  Start Selling
+                </button>
+              </div>
+              <p className="text-sm text-gray-500">
+                <span className="bg-brand text-white text-[10px] font-bold px-2 py-0.5 rounded mr-2">NEW</span>
+                Don't have a GSTIN? You can still sell on Goodkart.{' '}
+                <Link to="#" className="text-brand font-semibold hover:underline">Know more</Link>
+              </p>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2 }}
+              className="flex-1 w-full max-w-xl"
+            >
+              <div className="relative rounded-[2rem] overflow-hidden shadow-2xl aspect-square lg:aspect-video">
+                <img
+                  src="https://picsum.photos/seed/seller-hero/1200/800"
+                  alt="Seller Success"
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      <StatsSection />
+      <WhyGoodkart />
+      <Testimonials />
+      <HowItWorks />
+
+      {/* Learning Hub Section */}
+      <section id="pricing-commission" className="py-16 lg:py-20 bg-brand">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8 bg-white/10 backdrop-blur-md rounded-[2.5rem] p-8 md:p-12 border border-white/20">
+            <div className="text-center md:text-left">
+              <div className="inline-flex items-center justify-center md:justify-start gap-2 px-3.5 py-1.5 rounded-full bg-white/15 border border-white/30 mb-4">
+                <BookOpen size={16} className="text-white" />
+                <span className="font-bold tracking-widest uppercase text-xs text-white">Supplier Learning Hub</span>
+              </div>
+              <h2 className="section-title text-white mb-2">
+                Learn how to sell and grow your business on Goodkart
+              </h2>
+            </div>
+            <button className="px-8 py-4 rounded-2xl bg-white text-brand font-bold text-lg hover:bg-gray-50 transition-all flex items-center gap-2 whitespace-nowrap">
+              <Play fill="currentColor" size={20} /> Visit Learning Hub
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Grow Your Business Section */}
+      <section id="grow-business" className="py-20 lg:py-24 bg-white">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="section-title text-gray-900 mb-16 text-center">
+            Grow Your Business With Goodkart
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="p-10 rounded-[2rem] bg-gray-50 border border-gray-100 flex gap-6">
+              <div className="w-14 h-14 rounded-2xl bg-brand/5 flex items-center justify-center text-brand shrink-0">
+                <Truck size={28} />
+              </div>
+              <div>
+                <h4 className="text-xl font-bold text-gray-900 mb-3">Efficient & Affordable Shipping</h4>
+                <p className="text-gray-600 leading-relaxed">Sell your products across India with our vast logistics network covering 28,000+ pincodes.</p>
+              </div>
+            </div>
+            <div className="p-10 rounded-[2rem] bg-gray-50 border border-gray-100 flex gap-6">
+              <div className="w-14 h-14 rounded-2xl bg-brand/5 flex items-center justify-center text-brand shrink-0">
+                <Rocket size={28} />
+              </div>
+              <div>
+                <h4 className="text-xl font-bold text-gray-900 mb-3">Next Day Dispatch Program</h4>
+                <p className="text-gray-600 leading-relaxed">Get higher visibility and faster growth by opting for our Next Day Dispatch (NDD) program.</p>
+              </div>
+            </div>
+            <div className="p-10 rounded-[2rem] bg-gray-50 border border-gray-100 flex gap-6">
+              <div className="w-14 h-14 rounded-2xl bg-brand/5 flex items-center justify-center text-brand shrink-0">
+                <Zap size={28} />
+              </div>
+              <div>
+                <h4 className="text-xl font-bold text-gray-900 mb-3">Ads to Grow More</h4>
+                <p className="text-gray-600 leading-relaxed">Use our intuitive advertising tools to put your products in front of the right customers.</p>
+              </div>
+            </div>
+            <div className="p-10 rounded-[2rem] bg-gray-50 border border-gray-100 flex gap-6">
+              <div className="w-14 h-14 rounded-2xl bg-brand/5 flex items-center justify-center text-brand shrink-0">
+                <BarChart3 size={28} />
+              </div>
+              <div>
+                <h4 className="text-xl font-bold text-gray-900 mb-3">Business Insights & Analytics</h4>
+                <p className="text-gray-600 leading-relaxed">Make data-driven decisions with our comprehensive seller dashboard and analytics.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Popular Categories Section */}
+      <PopularSellerCategories onCategorySelect={handleNewSellerClick} />
+
+      {/* Support Section */}
+      <section className="py-20 lg:py-24 bg-white">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-brand/5 text-brand mb-8">
+            <Mail size={32} />
+          </div>
+          <h2 className="section-title text-gray-900 mb-4">Goodkart Supplier Support Available 24/7</h2>
+          <p className="text-gray-600 mb-8">Have questions? We're here to help you every step of the way.</p>
+          <a href="mailto:support@Goodkart.com" className="text-2xl font-bold text-brand hover:underline">
+            support@Goodkart.com
+          </a>
+        </div>
+      </section>
+
+      <Footer />
+      {/* Seller Login modal (Login button) */}
+      <AuthModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} hideRegister={true} sellerLogin={true} />
+      {/* Start Selling modal (New Seller / Start Selling button) */}
+      <AuthModal isOpen={isStartSellingOpen} onClose={() => setIsStartSellingOpen(false)} startSellingFlow={true} />
+    </div>
+  );
+};
