@@ -1,4 +1,3 @@
-
 import { auth } from '@/modules/shared/config/firebase';
 import { authFetch } from './api';
 import { getProductPricingWithGST } from './priceUtils';
@@ -26,9 +25,9 @@ const getUID = () => {
 export const addToCart = async (product, selections = {}) => {
     try {
         const uid = getUID();
-        
+
         let localUser = null;
-        try { localUser = JSON.parse(localStorage.getItem('user')); } catch(e){}
+        try { localUser = JSON.parse(localStorage.getItem('user')); } catch (e) { }
 
         if (localUser && (localUser.role === 'SELLER' || localUser.role === 'ADMIN')) {
             alert("Sellers and Admins cannot purchase products. Please create a user account to buy.");
@@ -52,6 +51,8 @@ export const addToCart = async (product, selections = {}) => {
             oldPrice: product.oldPrice, // Original old price (for PriceDisplay)
             pricingType: product.pricingType, // Pricing type (uniform/varied)
             sizePrices: product.sizePrices, // Size-specific prices
+            storage: product.storage || null, // Variant list (needed to price offsets relative to default variant)
+            memory: product.memory || null,
             basePrice: basePrice, // Base price for backend calculations
             priceWithGST: finalPrice, // GST-inclusive price for display
             originalPrice: strikethroughPrice, // Strikethrough price with GST
@@ -82,7 +83,7 @@ export const addToCart = async (product, selections = {}) => {
 
             window.dispatchEvent(new Event('cartUpdate'));
             // Trigger notification with product name
-            window.dispatchEvent(new CustomEvent('cartItemAdded', { 
+            window.dispatchEvent(new CustomEvent('cartItemAdded', {
                 detail: { productName: product.name || product.title || 'Product' }
             }));
             return { success: true, message: "Added to cart successfully" };
@@ -105,7 +106,7 @@ export const listenToCart = (callback) => {
                 const data = await response.json();
                 if (data.success) {
                     const cart = data.cart || [];
-                    
+
                     // Migrate old cart items to new structure
                     const migratedCart = await Promise.all(cart.map(async (item) => {
                         // Check if item has complete product structure
@@ -114,7 +115,7 @@ export const listenToCart = (callback) => {
                             (typeof item.selections.storage === 'string') ||
                             (typeof item.selections.memory === 'string')
                         );
-                        
+
                         if (needsMigration || needsSelectionFix) {
                             // Fetch fresh product data
                             try {
@@ -123,16 +124,16 @@ export const listenToCart = (callback) => {
                                     : 'http://localhost:5000';
                                 const productRes = await fetch(`${API_BASE}/products/${item.productId}`);
                                 const productData = await productRes.json();
-                                
+
                                 if (productData.success && productData.product) {
                                     const product = productData.product;
-                                    
+
                                     // Fix selections if needed
                                     let fixedSelections = { ...item.selections };
                                     if (needsSelectionFix) {
                                         // Convert string selections back to objects with priceOffset
                                         if (typeof fixedSelections.storage === 'string' && product.storageOptions) {
-                                            const storageOption = product.storageOptions.find(opt => 
+                                            const storageOption = product.storageOptions.find(opt =>
                                                 opt.label === fixedSelections.storage || opt.value === fixedSelections.storage
                                             );
                                             if (storageOption) {
@@ -140,7 +141,7 @@ export const listenToCart = (callback) => {
                                             }
                                         }
                                         if (typeof fixedSelections.memory === 'string' && product.memoryOptions) {
-                                            const memoryOption = product.memoryOptions.find(opt => 
+                                            const memoryOption = product.memoryOptions.find(opt =>
                                                 opt.label === fixedSelections.memory || opt.value === fixedSelections.memory
                                             );
                                             if (memoryOption) {
@@ -148,7 +149,7 @@ export const listenToCart = (callback) => {
                                             }
                                         }
                                     }
-                                    
+
                                     // Merge with fresh product data
                                     return {
                                         ...item,
@@ -157,6 +158,8 @@ export const listenToCart = (callback) => {
                                         oldPrice: product.oldPrice,
                                         pricingType: product.pricingType,
                                         sizePrices: product.sizePrices,
+                                        storage: product.storage || null,
+                                        memory: product.memory || null,
                                         gstPercent: product.gstPercent || 18,
                                         storageOptions: product.storageOptions,
                                         memoryOptions: product.memoryOptions,
@@ -169,7 +172,7 @@ export const listenToCart = (callback) => {
                         }
                         return item;
                     }));
-                    
+
                     callback(migratedCart);
                 } else {
                     callback([]);

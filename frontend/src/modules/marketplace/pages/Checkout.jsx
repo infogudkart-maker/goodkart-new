@@ -218,6 +218,8 @@ export default function Checkout() {
                 oldPrice: buyNowProduct.oldPrice, // Original old price (for PriceDisplay)
                 pricingType: buyNowProduct.pricingType, // Pricing type (uniform/varied)
                 sizePrices: buyNowProduct.sizePrices, // Size-specific prices
+                storage: buyNowProduct.storage || null,
+                memory: buyNowProduct.memory || null,
                 basePrice: basePrice, // Base price for backend calculations
                 priceWithGST: finalPrice, // GST-inclusive price for display
                 originalPrice: strikethroughPrice,
@@ -260,6 +262,8 @@ export default function Checkout() {
                     oldPrice: buyNowProduct.oldPrice, // Original old price (for PriceDisplay)
                     pricingType: buyNowProduct.pricingType, // Pricing type (uniform/varied)
                     sizePrices: buyNowProduct.sizePrices, // Size-specific prices
+                    storage: buyNowProduct.storage || null,
+                    memory: buyNowProduct.memory || null,
                     basePrice: basePrice, // Base price for backend calculations
                     priceWithGST: finalPrice, // GST-inclusive price for display
                     originalPrice: strikethroughPrice,
