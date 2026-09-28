@@ -296,6 +296,7 @@ export default function Invoice() {
                             )}
                             <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>Gross Amount</th>
                             <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>Taxable Value</th>
+                            <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>Tax Rate</th>
                             <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>SGST</th>
                             <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>CGST</th>
                             <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>Total</th>
@@ -341,6 +342,7 @@ export default function Invoice() {
                                     )}
                                     <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{totalAmount.toFixed(2)}</td>
                                     <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{taxableAmount.toFixed(2)}</td>
+                                    <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>{gstPercent}%</td>
                                     <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{sgst.toFixed(2)}</td>
                                     <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{cgst.toFixed(2)}</td>
                                     <td style={{ textAlign: 'right', padding: '0.5rem', fontWeight: '600', color: '#000', border: '1px solid #000' }}>₹{finalRowTotal.toFixed(2)}</td>
@@ -355,13 +357,14 @@ export default function Invoice() {
                             )}
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{totalGross.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{totalTaxable.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>-</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{totalSGST.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{totalCGST.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{(totalGross + totalPFee).toFixed(2)}</td>
                         </tr>
                         {/* Grand Total - Products Only (No Platform Fee, No Shipping) */}
                         <tr style={{ background: '#f3f4f6', fontWeight: '800', fontSize: '11px' }}>
-                            <td colSpan={showPlatformFee ? 8 : 7} style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#000', border: '1px solid #000', textTransform: 'uppercase' }}>Grand Total (Products)</td>
+                            <td colSpan={showPlatformFee ? 9 : 8} style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#000', border: '1px solid #000', textTransform: 'uppercase' }}>Grand Total (Products)</td>
                             <td style={{ textAlign: 'right', padding: '0.6rem 0.5rem', color: '#111827', border: '1px solid #000', fontSize: '12px' }}>₹{totalGross.toFixed(2)}</td>
                         </tr>
                     </tbody>
@@ -425,6 +428,7 @@ export default function Invoice() {
                             <th style={{ textAlign: 'center', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>SAC</th>
                             <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>Platform Fee</th>
                             <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>Taxable Value</th>
+                            <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>Tax Rate</th>
                             <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>CGST</th>
                             <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>SGST</th>
                             <th style={{ textAlign: 'right', padding: '0.5rem', color: '#000', fontWeight: '700', fontSize: '10px', border: '1px solid #000' }}>Total</th>
@@ -442,6 +446,7 @@ export default function Invoice() {
                             <td style={{ textAlign: 'center', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>998314</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{platformFeeBase.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{platformFeeBase.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>18%</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{platformFeeCGST.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{platformFeeSGST.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', fontWeight: '600', color: '#000', border: '1px solid #000' }}>₹{platformFeeTotalWithGST.toFixed(2)}</td>
@@ -452,6 +457,7 @@ export default function Invoice() {
                             <td colSpan="2" style={{ padding: '0.5rem', color: '#000', border: '1px solid #000' }}>Subtotal (Platform Charges)</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{platformFeeBase.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{platformFeeBase.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>18%</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{platformFeeCGST.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{platformFeeSGST.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem', color: '#000', border: '1px solid #000' }}>₹{platformFeeTotalWithGST.toFixed(2)}</td>
@@ -459,21 +465,21 @@ export default function Invoice() {
 
                         {/* Shipping Charges */}
                         <tr style={{ fontWeight: '500' }}>
-                            <td colSpan="6" style={{ padding: '0.4rem 0.5rem', textAlign: 'right', color: '#000', border: '1px solid #000' }}>Shipping Charges</td>
+                            <td colSpan="7" style={{ padding: '0.4rem 0.5rem', textAlign: 'right', color: '#000', border: '1px solid #000' }}>Shipping Charges</td>
                             <td style={{ textAlign: 'right', padding: '0.4rem 0.5rem', color: '#000', border: '1px solid #000' }}>₹{shippingCharges.toFixed(2)}</td>
                         </tr>
 
                         {/* Discount if applicable */}
                         {discount > 0 && (
                             <tr style={{ background: '#f0fdf4', fontWeight: '700', color: '#059669' }}>
-                                <td colSpan="6" style={{ padding: '0.5rem', textAlign: 'right', border: '1px solid #000' }}>DISCOUNT VALUE (COUPON)</td>
+                                <td colSpan="7" style={{ padding: '0.5rem', textAlign: 'right', border: '1px solid #000' }}>DISCOUNT VALUE (COUPON)</td>
                                 <td style={{ textAlign: 'right', padding: '0.5rem', border: '1px solid #000' }}>-₹{discount.toFixed(2)}</td>
                             </tr>
                         )}
 
                         {/* Grand Total */}
                         <tr style={{ background: '#f3f4f6', fontWeight: '800', fontSize: '11px' }}>
-                            <td colSpan="6" style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#000', border: '1px solid #000', textTransform: 'uppercase' }}>Grand Total (Platform Charges)</td>
+                            <td colSpan="7" style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#000', border: '1px solid #000', textTransform: 'uppercase' }}>Grand Total (Platform Charges)</td>
                             <td style={{ textAlign: 'right', padding: '0.6rem 0.5rem', color: '#111827', border: '1px solid #000', fontSize: '12px' }}>₹{grandTotal.toFixed(2)}</td>
                         </tr>
                     </tbody>

@@ -146,7 +146,8 @@ const generateAnalyticsPDF = async (req, res) => {
                 name: prod.title || 'N/A',
                 price, discountedPrice: discountedPrice < price ? discountedPrice : null,
                 stock, sold: 0, revenue: 0,
-                platformFee: 0, platformFeeGST: 0, netEarnings: 0
+                platformFee: 0, platformFeeGST: 0, netEarnings: 0,
+                taxRate: (prod.gstPercent === 0 ? 0 : (Number(prod.gstPercent) || 18))
             };
         });
 
@@ -258,9 +259,9 @@ const generateAnalyticsPDF = async (req, res) => {
         // Product Table with Platform Fees
         y = renderSectionHeader(doc, 'PRODUCT EARNINGS BREAKDOWN', y) + 5;
         const prodCols = [
-            { label: 'Product', x: 55 }, { label: 'Sold', x: 200 },
-            { label: 'Revenue', x: 240 }, { label: 'Platform Fee', x: 310 },
-            { label: 'GST', x: 395 }, { label: 'Net Earnings', x: 455 }
+            { label: 'Product', x: 55 }, { label: 'Sold', x: 165 },
+            { label: 'Revenue', x: 200 }, { label: 'Tax Rate', x: 255 }, { label: 'Platform Fee', x: 305 },
+            { label: 'Fee GST', x: 385 }, { label: 'Net Earnings', x: 450 }
         ];
         y = renderTableHeader(doc, y, prodCols);
 
@@ -269,12 +270,13 @@ const generateAnalyticsPDF = async (req, res) => {
             if (y > 720) { doc.addPage(); y = 50; y = renderTableHeader(doc, y, prodCols); }
             if (i % 2 === 0) doc.rect(50, y - 3, 495, 18).fillAndStroke('#f9fafb', '#f9fafb');
             doc.fontSize(8).fillColor('#000000').font('Helvetica');
-            doc.text((p.name || '').substring(0, 22), 55, y);
-            doc.text(p.sold.toString(), 200, y);
-            doc.text(`Rs.${p.revenue.toFixed(0)}`, 240, y);
-            doc.fillColor('#dc2626').text(`-Rs.${p.platformFee.toFixed(2)}`, 310, y);
-            doc.text(`-Rs.${p.platformFeeGST.toFixed(2)}`, 395, y);
-            doc.fillColor('#059669').font('Helvetica-Bold').text(`Rs.${p.netEarnings.toFixed(0)}`, 455, y);
+            doc.text((p.name || '').substring(0, 18), 55, y);
+            doc.text(p.sold.toString(), 165, y);
+            doc.text(`Rs.${p.revenue.toFixed(0)}`, 200, y);
+            doc.text(`${p.taxRate}%`, 255, y);
+            doc.fillColor('#dc2626').text(`-Rs.${p.platformFee.toFixed(2)}`, 305, y);
+            doc.text(`-Rs.${p.platformFeeGST.toFixed(2)}`, 385, y);
+            doc.fillColor('#059669').font('Helvetica-Bold').text(`Rs.${p.netEarnings.toFixed(0)}`, 450, y);
             doc.fillColor('#000000').font('Helvetica');
             y += 18;
         });
@@ -330,6 +332,7 @@ const generateInvoicePDF = async (req, res) => {
             sellerProducts.push({
                 name: prod.title || 'N/A', category: prod.category || 'N/A',
                 mrp, selling, stock: prod.stock || 0,
+                taxRate: (prod.gstPercent === 0 ? 0 : (Number(prod.gstPercent) || 18)),
                 offPercent: mrp > selling ? Math.round(((mrp - selling) / mrp) * 100) : 0
             });
         });
@@ -359,6 +362,7 @@ const generateInvoicePDF = async (req, res) => {
                     orderId: order.orderId || o.id,
                     orderDate: orderDate ? orderDate.toLocaleDateString('en-GB') : 'N/A',
                     productName: item.name || 'N/A', quantity: e.qty, unit: e.unit,
+                    taxRate: (item.gstPercent === 0 ? 0 : (Number(item.gstPercent) || 18)),
                     total: e.revenue, platformFee: e.fee, platformFeeGST: e.feeGST, netEarnings: e.net
                 });
             });
@@ -438,8 +442,8 @@ const generateInvoicePDF = async (req, res) => {
         // Products table (MRP vs selling)
         y = renderSectionHeader(doc, 'PRODUCTS LISTED BY SELLER', y) + 5;
         const prodCols = [
-            { label: 'Product Name', x: 55 }, { label: 'Category', x: 250 },
-            { label: 'MRP', x: 340 }, { label: 'Selling Price', x: 395 }, { label: 'Off', x: 465 }, { label: 'Stock', x: 505 }
+            { label: 'Product Name', x: 55 }, { label: 'Category', x: 225 },
+            { label: 'MRP', x: 300 }, { label: 'Selling Price', x: 345 }, { label: 'Tax Rate', x: 415 }, { label: 'Off', x: 465 }, { label: 'Stock', x: 505 }
         ];
         y = renderTableHeader(doc, y, prodCols);
         if (sellerProducts.length === 0) {
@@ -450,10 +454,11 @@ const generateInvoicePDF = async (req, res) => {
                 if (y > 740) { doc.addPage(); y = 50; y = renderTableHeader(doc, y, prodCols); }
                 if (i % 2 === 0) doc.rect(50, y - 3, 495, 18).fillAndStroke('#f9fafb', '#f9fafb');
                 doc.fontSize(8).fillColor('#000000').font('Helvetica');
-                doc.text(p.name.substring(0, 36), 55, y);
-                doc.text(String(p.category).substring(0, 16), 250, y);
-                doc.text(inr(p.mrp).replace('.00', ''), 340, y);
-                doc.font('Helvetica-Bold').text(inr(p.selling).replace('.00', ''), 395, y).font('Helvetica');
+                doc.text(p.name.substring(0, 32), 55, y);
+                doc.text(String(p.category).substring(0, 14), 225, y);
+                doc.text(inr(p.mrp).replace('.00', ''), 300, y);
+                doc.font('Helvetica-Bold').text(inr(p.selling).replace('.00', ''), 345, y).font('Helvetica');
+                doc.text(`${p.taxRate}%`, 415, y);
                 doc.text(p.offPercent ? `${p.offPercent}%` : '-', 465, y);
                 doc.text(String(p.stock), 505, y);
                 y += 18;
@@ -465,9 +470,9 @@ const generateInvoicePDF = async (req, res) => {
         if (y > 640) { doc.addPage(); y = 50; }
         y = renderSectionHeader(doc, 'DELIVERED ORDER DETAILS WITH EARNINGS', y) + 5;
         const orderCols = [
-            { label: 'Order ID', x: 52 }, { label: 'Date', x: 118 }, { label: 'Product', x: 170 },
-            { label: 'Qty', x: 280 }, { label: 'Unit', x: 305 }, { label: 'Sales', x: 350 },
-            { label: 'Fee', x: 402 }, { label: 'GST', x: 447 }, { label: 'Net', x: 492 }
+            { label: 'Order ID', x: 52 }, { label: 'Date', x: 110 }, { label: 'Product', x: 158 },
+            { label: 'Qty', x: 250 }, { label: 'Unit', x: 272 }, { label: 'Sales', x: 305 },
+            { label: 'Tax Rate', x: 350 }, { label: 'Fee', x: 398 }, { label: 'Fee GST', x: 438 }, { label: 'Net', x: 490 }
         ];
         y = renderTableHeader(doc, y, orderCols);
         if (orderDetails.length === 0) {
@@ -478,15 +483,16 @@ const generateInvoicePDF = async (req, res) => {
                 if (y > 740) { doc.addPage(); y = 50; y = renderTableHeader(doc, y, orderCols); }
                 if (i % 2 === 0) doc.rect(50, y - 3, 495, 18).fillAndStroke('#f9fafb', '#f9fafb');
                 doc.fontSize(7).fillColor('#000000').font('Helvetica');
-                doc.text(String(o.orderId), 52, y, { width: 64, lineBreak: false });
-                doc.text(o.orderDate, 118, y);
-                doc.text(o.productName.substring(0, 20), 170, y, { width: 108, lineBreak: false });
-                doc.text(String(o.quantity), 280, y);
-                doc.text(o.unit.toFixed(0), 305, y);
-                doc.text(o.total.toFixed(2), 350, y);
-                doc.fillColor('#dc2626').text(`-${o.platformFee.toFixed(2)}`, 402, y);
-                doc.text(`-${o.platformFeeGST.toFixed(2)}`, 447, y);
-                doc.fillColor('#059669').font('Helvetica-Bold').text(o.netEarnings.toFixed(2), 492, y);
+                doc.text(String(o.orderId), 52, y, { width: 56, lineBreak: false });
+                doc.text(o.orderDate, 110, y);
+                doc.text(o.productName.substring(0, 18), 158, y, { width: 90, lineBreak: false });
+                doc.text(String(o.quantity), 250, y);
+                doc.text(o.unit.toFixed(0), 272, y);
+                doc.text(o.total.toFixed(2), 305, y);
+                doc.text(`${o.taxRate}%`, 350, y);
+                doc.fillColor('#dc2626').text(`-${o.platformFee.toFixed(2)}`, 398, y);
+                doc.text(`-${o.platformFeeGST.toFixed(2)}`, 438, y);
+                doc.fillColor('#059669').font('Helvetica-Bold').text(o.netEarnings.toFixed(2), 490, y);
                 doc.fillColor('#000000').font('Helvetica');
                 y += 18;
             });
@@ -494,9 +500,9 @@ const generateInvoicePDF = async (req, res) => {
             if (y > 740) { doc.addPage(); y = 50; }
             doc.rect(50, y - 3, 495, 20).fillAndStroke('#EBF0FF', '#BFCFFA');
             doc.fontSize(8).fillColor('#000000').font('Helvetica-Bold').text('TOTAL', 52, y + 2);
-            doc.text(String(unitsSold), 280, y + 2).text(totalRevenue.toFixed(2), 350, y + 2)
-               .fillColor('#dc2626').text(`-${totalPlatformFees.toFixed(2)}`, 402, y + 2).text(`-${totalPlatformFeeGST.toFixed(2)}`, 447, y + 2)
-               .fillColor('#059669').text(amountToReceive.toFixed(2), 492, y + 2);
+            doc.text(String(unitsSold), 250, y + 2).text(totalRevenue.toFixed(2), 305, y + 2)
+               .fillColor('#dc2626').text(`-${totalPlatformFees.toFixed(2)}`, 398, y + 2).text(`-${totalPlatformFeeGST.toFixed(2)}`, 438, y + 2)
+               .fillColor('#059669').text(amountToReceive.toFixed(2), 490, y + 2);
             y += 24;
         }
 
