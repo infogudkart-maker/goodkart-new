@@ -204,7 +204,7 @@ export default function ProductDetail() {
 
                 setProduct(data);
                 if (data.colors && data.colors.length > 0) setSelectedColor(data.colors[0]);
-                if (data.sizes && data.sizes.length > 0) setSelectedSize(data.sizes[1] || data.sizes[0]);
+                if (data.sizes && data.sizes.length > 0) setSelectedSize(data.sizes[0]);
                 if (data.storage && data.storage.length > 0) setSelectedStorage(data.storage[0]);
                 if (data.memory && data.memory.length > 0) setSelectedMemory(data.memory[0]);
 
@@ -426,7 +426,7 @@ export default function ProductDetail() {
         if (isOutOfStock) return;
 
         let localUser = null;
-        try { localUser = JSON.parse(localStorage.getItem('user')); } catch (e) {}
+        try { localUser = JSON.parse(localStorage.getItem('user')); } catch (e) { }
 
         // Check if user is logged in
         if (!localUser && !auth.currentUser) {
@@ -456,7 +456,7 @@ export default function ProductDetail() {
 
             // Store in localStorage
             localStorage.setItem('pendingBuyNow', JSON.stringify(buyNowItem));
-            
+
             // Trigger login modal
             window.dispatchEvent(new Event('openLoginModal'));
             return;
@@ -522,7 +522,7 @@ export default function ProductDetail() {
         if (!product) return [];
         const hasColorVariants = Object.keys(variantImageMap || {}).length > 0;
         if (!hasColorVariants) return mainImages?.length > 0 ? mainImages : [product.image || product.imageUrl || '/placeholder-image.jpg'];
-        const colorKey = selectedColor 
+        const colorKey = selectedColor
             ? (typeof selectedColor === 'object' ? selectedColor.name : selectedColor)
             : Object.keys(variantImageMap)[0];
         const vImgs = variantImageMap[colorKey];
@@ -626,16 +626,16 @@ export default function ProductDetail() {
             <div className="pd-sticky-bottom-bar">
                 <div className="pd-sticky-bar-inner">
                     <div className="pd-sticky-left-info">
-                        <img 
-                            src={displayImage} 
-                            alt={product.name} 
+                        <img
+                            src={displayImage}
+                            alt={product.name}
                             className="pd-sticky-product-thumb"
                             onError={(e) => {
                                 const fallback = product.image || product.imageUrl || (Array.isArray(product.images) && product.images[0]);
                                 if (fallback && e.target.src !== fallback) {
                                     e.target.src = fallback;
                                 }
-                            }} 
+                            }}
                         />
                         <div className="pd-sticky-details">
                             <span className="pd-sticky-prod-name">{product.name}</span>
@@ -741,5 +741,3 @@ export default function ProductDetail() {
         </div >
     );
 }
-
-

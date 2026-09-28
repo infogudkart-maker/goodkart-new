@@ -28,7 +28,7 @@ export const getProductPricing = (product, selections = {}) => {
     if (product.discountPrice !== null && product.discountPrice !== undefined && product.discountPrice !== '' && Number(product.discountPrice) > 0) {
         const p2 = Number(product.discountPrice);
         const p1 = Number(product.price);
-        
+
         if (p2 > p1) {
             // Seller swapped them! p1 is Selling, p2 is MRP (e.g. price: 265, discountPrice: 300)
             baseOriginalPrice = p2; // MRP - ALWAYS the crossed price
@@ -73,22 +73,34 @@ export const getProductPricing = (product, selections = {}) => {
     } else if (product.pricingType === 'varied' && !selections.size && product.sizePrices) {
         // No size selected yet, but product has varied pricing
         // Use the first available size price as default
+        // Must match the size pre-selected on the product page (first entry of product.sizes),
+        // otherwise the listing card and the product page show different prices.
         let firstSizePrice = null;
+        const defaultSize = Array.isArray(product.sizes) && product.sizes.length > 0 ? product.sizes[0] : null;
         if (Array.isArray(product.sizePrices) && product.sizePrices.length > 0) {
-            firstSizePrice = Number(product.sizePrices[0].price);
+            const match = defaultSize !== null ? product.sizePrices.find(sp => sp.size === defaultSize && sp.price) : null;
+            firstSizePrice = Number((match || product.sizePrices[0]).price);
         } else if (typeof product.sizePrices === 'object') {
-            const firstKey = Object.keys(product.sizePrices)[0];
-            if (firstKey) firstSizePrice = Number(product.sizePrices[firstKey]);
+            let key = defaultSize !== null && product.sizePrices[defaultSize] ? defaultSize : Object.keys(product.sizePrices)[0];
+            if (key !== undefined) firstSizePrice = Number(product.sizePrices[key]);
         }
-        
+
         if (firstSizePrice !== null) {
             baseSellingPrice = firstSizePrice;
         }
     }
 
     // 3. Add Variant Offsets (storage, memory) - ONLY to selling price
-    const storageOffset = (selections.storage?.priceOffset) || 0;
-    const memoryOffset = (selections.memory?.priceOffset) || 0;
+    // Offsets are relative to the DEFAULT (first) variant, whose price is the listed base price
+    // shown on cards. Without this, the product page (which pre-selects the first variant)
+    // added that variant's offset on top and showed a different price than the card.
+    const offsetOf = (variant) => {
+        if (variant && typeof variant === 'object') return Number(variant.priceOffset) || 0;
+        return 0;
+    };
+    const defaultOffset = (list) => (Array.isArray(list) && list.length > 0 ? offsetOf(list[0]) : 0);
+    const storageOffset = offsetOf(selections.storage) - defaultOffset(product.storage);
+    const memoryOffset = offsetOf(selections.memory) - defaultOffset(product.memory);
     const totalOffset = storageOffset + memoryOffset;
 
     let finalSellingPrice = baseSellingPrice + totalOffset;
@@ -175,17 +187,17 @@ export const getProductPricingWithGST = (product, selections = {}) => {
             includesGST: false
         };
     }
-    
+
     // Get base pricing (without GST)
     const basePricing = getProductPricing(product, selections);
-    
+
     // Get GST percent from product/category
     const gstPercent = product.gstPercent || 18;
-    
+
     // Calculate GST-inclusive prices for display
     const finalPriceWithGST = getPriceWithGST(basePricing.finalPrice, gstPercent);
     const strikethroughPriceWithGST = getPriceWithGST(basePricing.strikethroughPrice, gstPercent);
-    
+
     return {
         ...basePricing,
         finalPrice: finalPriceWithGST,
