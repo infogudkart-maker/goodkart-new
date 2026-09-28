@@ -17,7 +17,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { listenToCart, removeFromCart, updateCartItemQuantity } from '@/modules/shared/utils/cartUtils';
 import { getProductPricingWithGST } from '@/modules/shared/utils/priceUtils';
 import { auth } from '@/modules/shared/config/firebase';
-import { authFetch } from '@/modules/shared/utils/api';
+import { authFetch, getCurrentUser } from '@/modules/shared/utils/api';
 import { validateGST, cleanGST, getGSTError } from '@/modules/shared/utils/gstValidation';
 import { calculateOrderTotalsWithGSTInclusive } from '@/modules/shared/utils/platformFeeUtils';
 import PriceDisplay from '@/modules/shared/components/common/PriceDisplay';
@@ -79,13 +79,13 @@ export default function Checkout() {
     const [couponError, setCouponError] = useState('');
     const [applyingCoupon, setApplyingCoupon] = useState(false);
     const [validationError, setValidationError] = useState(''); // Add inline validation error
-    
+
     // GST Number states
     const [hasGST, setHasGST] = useState(false);
     const [gstNumber, setGstNumber] = useState('');
     const [businessName, setBusinessName] = useState(''); // Add business name state
     const [gstError, setGstError] = useState('');
-    
+
     const [adminConfig, setAdminConfig] = useState({
         platformFeeBreakdown: {
             digitalSecurityFee: 1.2,
@@ -99,7 +99,7 @@ export default function Checkout() {
         defaultGstPercent: 18,
         defaultShippingHandlingPercent: 0
     });
-    
+
     // Shipping estimation states
     const [shippingFee, setShippingFee] = useState(0);
     const [estimatingShipping, setEstimatingShipping] = useState(false);
@@ -110,13 +110,13 @@ export default function Checkout() {
     const [addressMode, setAddressMode] = useState('saved');
     const [savedAddresses, setSavedAddresses] = useState([]);
     const [selectedAddressIndex, setSelectedAddressIndex] = useState(null);
-    
+
     // Billing address states
     const [billingAddressMode, setBillingAddressMode] = useState('saved');
     const [selectedBillingAddressIndex, setSelectedBillingAddressIndex] = useState(null);
     const [saveBillingForFuture, setSaveBillingForFuture] = useState(false);
     const [setBillingAsDefault, setSetBillingAsDefault] = useState(false);
-    
+
     // Computed: Filter saved addresses by type (include addresses without type for backward compatibility)
     const savedBillingAddresses = savedAddresses.filter(addr => !addr.type || addr.type === 'billing' || addr.type === 'both');
 
@@ -154,11 +154,16 @@ export default function Checkout() {
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(async (u) => {
-            setUser(u);
-            if (u) {
+            // `u` is only non-null for a real Firebase session (email/Google login, or a
+            // genuine Firebase phone-OTP sign-in). The mock/dev phone-OTP shortcut never
+            // signs into Firebase, so `u` is null there even though the user is logged
+            // in - fall back to the locally-stored user so checkout still recognizes them.
+            const effectiveUser = u || getCurrentUser();
+            setUser(effectiveUser);
+            if (effectiveUser) {
                 setFetchingSavedAddress(true);
                 try {
-                    const res = await authFetch(`/consumer/${u.uid}/addresses`);
+                    const res = await authFetch(`/consumer/${effectiveUser.uid}/addresses`);
                     const data = await res.json();
                     const addresses = data.success ? (data.addresses || []) : [];
                     setSavedAddresses(addresses);
@@ -167,7 +172,7 @@ export default function Checkout() {
                     const defaultShipping = addresses.find(addr => addr.type === 'shipping' && addr.isDefault === true);
                     // Find default billing address
                     const defaultBilling = addresses.find(addr => addr.type === 'billing' && addr.isDefault === true);
-                    
+
                     // Set shipping address - DON'T auto-select, let user choose from dropdown
                     if (addresses.length > 0) {
                         setAddressMode('saved');
@@ -176,7 +181,7 @@ export default function Checkout() {
                     } else {
                         setAddressMode('new');
                     }
-                    
+
                     // Set billing address
                     if (defaultBilling) {
                         setBillingAddress(defaultBilling);
@@ -197,11 +202,11 @@ export default function Checkout() {
 
     useEffect(() => {
         const { buyNowProduct, selectedItemIds } = location.state || {};
-        
+
         // If Buy Now product is provided, use it directly without cart
         if (buyNowProduct) {
             const { finalPrice, strikethroughPrice, gstPercent, basePrice } = getProductPricingWithGST(buyNowProduct, buyNowProduct.selections || {});
-            
+
             const buyNowCartItem = {
                 id: `buynow_${buyNowProduct.id}_${Date.now()}`,
                 productId: buyNowProduct.id,
@@ -227,23 +232,23 @@ export default function Checkout() {
                 selectedMemory: buyNowProduct.selections?.memory?.label || buyNowProduct.selections?.memory,
                 isBuyNow: true
             };
-            
+
             setCheckoutItems([buyNowCartItem]);
             setSelectedItems(new Set([buyNowCartItem.id]));
             setCartItems([]);
             setLoading(false);
             return;
         }
-        
+
         // Otherwise, listen to cart for normal checkout
         const unsubscribe = listenToCart((items) => {
             setCartItems(items);
             const { buyNowProduct, selectedItemIds } = location.state || {};
-            
+
             if (buyNowProduct) {
                 // Buy Now flow: Create temporary cart item for Buy Now product
                 const { finalPrice, strikethroughPrice, gstPercent, basePrice } = getProductPricingWithGST(buyNowProduct, buyNowProduct.selections || {});
-                
+
                 const buyNowCartItem = {
                     id: `buynow_${buyNowProduct.id}_${Date.now()}`,
                     productId: buyNowProduct.id,
@@ -269,17 +274,17 @@ export default function Checkout() {
                     selectedMemory: buyNowProduct.selections?.memory?.label || buyNowProduct.selections?.memory,
                     isBuyNow: true // Flag to identify Buy Now item
                 };
-                
+
                 // Combine Buy Now product with cart items (Buy Now first)
                 const allItems = [buyNowCartItem, ...items];
                 setCheckoutItems(allItems);
-                
+
                 // Pre-select ONLY the Buy Now product
                 setSelectedItems(new Set([buyNowCartItem.id]));
-                
+
             } else if (selectedItemIds && selectedItemIds.length > 0) {
                 // Regular cart checkout: Show only selected items
-                const itemsToCheckout = items.filter(item => 
+                const itemsToCheckout = items.filter(item =>
                     selectedItemIds.includes(item.id || item.productId)
                 );
                 setCheckoutItems(itemsToCheckout);
@@ -290,13 +295,13 @@ export default function Checkout() {
                 setCheckoutItems(items);
                 setSelectedItems(new Set(items.map(item => item.id || item.productId)));
             }
-            
+
             let itemsToCheckout = items;
-            
+
             if (selectedItemIds && selectedItemIds.length > 0) {
                 itemsToCheckout = items.filter(item => selectedItemIds.includes(item.id || item.productId));
             }
-            
+
             setCheckoutItems(itemsToCheckout);
             setLoading(false);
         });
@@ -315,18 +320,18 @@ export default function Checkout() {
             setErrors(prev => ({ ...prev, [name]: '' }));
         }
     };
-    
+
     // Estimate shipping charges when address is complete
     const estimateShippingCharges = async (address, items) => {
         // Check if address has required fields
         if (!address.pincode || address.pincode.length !== 6) {
             return;
         }
-        
+
         if (!items || items.length === 0) {
             return;
         }
-        
+
         setEstimatingShipping(true);
         try {
             const requestBody = {
@@ -334,15 +339,15 @@ export default function Checkout() {
                 cartItems: items,
                 totalWeight: items.length * 0.5 // Estimate 0.5kg per item
             };
-            
+
             const response = await authFetch('/shipping/estimate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
             });
-            
+
             const data = await response.json();
-            
+
             if (data.success) {
                 setShippingFee(data.shippingCharge || 0);
                 setEstimatedDeliveryDays(data.estimatedDeliveryDays || '');
@@ -360,14 +365,14 @@ export default function Checkout() {
             setEstimatingShipping(false);
         }
     };
-    
+
     // Trigger shipping estimation when address changes OR items load
     useEffect(() => {
         // Filter selected items
-        const selectedItems_filtered = checkoutItems.filter(item => 
+        const selectedItems_filtered = checkoutItems.filter(item =>
             selectedItems.has(item.id || item.productId)
         );
-        
+
         if (shippingAddress.pincode && shippingAddress.pincode.length === 6 && selectedItems_filtered.length > 0) {
             estimateShippingCharges(shippingAddress, selectedItems_filtered);
         } else {
@@ -397,10 +402,10 @@ export default function Checkout() {
         setRazorpayLoading(true);
         try {
             const selectedCartItems = selectedCheckoutItems;
-            
+
             // Prepare billing address (same as shipping if checkbox is checked)
             const finalBillingAddress = sameAsBilling ? { ...shippingAddress, type: 'billing' } : billingAddress;
-            
+
             const customerInfo = {
                 firstName: shippingAddress.firstName,
                 lastName: shippingAddress.lastName,
@@ -451,10 +456,10 @@ export default function Checkout() {
                     handler: async function (response) {
                         try {
                             const selectedCartItems = selectedCheckoutItems;
-                            
+
                             // Prepare billing address
                             const finalBillingAddress = sameAsBilling ? { ...shippingAddress, type: 'billing' } : billingAddress;
-                            
+
                             const customerInfo = {
                                 firstName: shippingAddress.firstName,
                                 lastName: shippingAddress.lastName,
@@ -466,7 +471,7 @@ export default function Checkout() {
                                 businessName: hasGST && businessName ? businessName.trim() : null,
                                 estimatedShippingCharge: shippingFee // Pass estimated shipping to backend
                             };
-                            
+
                             const verifyResponse = await authFetch('/payment/verify', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -477,7 +482,7 @@ export default function Checkout() {
                                     cartItems: selectedCartItems,
                                     customerInfo: customerInfo,
                                     amount: finalTotal,
-                                    uid: auth.currentUser?.uid || 'guest',
+                                    uid: user?.uid || 'guest',
                                     couponCode: appliedCoupon?.code || null,
                                     couponDiscount: couponDiscount,
                                     platformFeeBreakdown: adminConfig.platformFeeBreakdown,
@@ -493,12 +498,12 @@ export default function Checkout() {
                                 if (!isBuyNow) {
                                     selectedCartItems.forEach(item => removeFromCart(item.id || item.productId));
                                 }
-                                
+
                                 // Save shipping address if requested
                                 if (addressMode === 'new' && saveAddressForFuture && user) {
                                     try {
-                                        const newAddress = { 
-                                            ...shippingAddress, 
+                                        const newAddress = {
+                                            ...shippingAddress,
                                             isDefault: setAsDefault,
                                             type: 'shipping',
                                             id: Date.now().toString()
@@ -511,12 +516,12 @@ export default function Checkout() {
                                         console.error("Error saving shipping address:", error);
                                     }
                                 }
-                                
+
                                 // Save billing address if requested and different from shipping
                                 if (!sameAsBilling && billingAddressMode === 'new' && saveBillingForFuture && user) {
                                     try {
-                                        const newBillingAddress = { 
-                                            ...billingAddress, 
+                                        const newBillingAddress = {
+                                            ...billingAddress,
                                             isDefault: setBillingAsDefault,
                                             type: 'billing',
                                             id: (Date.now() + 1).toString()
@@ -529,7 +534,7 @@ export default function Checkout() {
                                         console.error("Error saving billing address:", error);
                                     }
                                 }
-                                
+
                                 setOrderId(verifyResult.orderId);
                                 setShowAnimation(true);
                             } else {
@@ -573,10 +578,10 @@ export default function Checkout() {
         setLoading(true);
         try {
             const selectedCartItems = selectedCheckoutItems;
-            
+
             // Prepare billing address
             const finalBillingAddress = sameAsBilling ? { ...shippingAddress, type: 'billing' } : billingAddress;
-            
+
             const customerInfo = {
                 firstName: shippingAddress.firstName,
                 lastName: shippingAddress.lastName,
@@ -589,7 +594,7 @@ export default function Checkout() {
                 estimatedShippingCharge: shippingFee // Pass estimated shipping to backend
             };
 
-            const currentUser = auth.currentUser;
+            const currentUser = user;
             if (!currentUser) {
                 alert("Please login to place an order");
                 setLoading(false);
@@ -617,8 +622,8 @@ export default function Checkout() {
                 // Save shipping address if requested
                 if (addressMode === 'new' && saveAddressForFuture && user) {
                     try {
-                        const newAddress = { 
-                            ...shippingAddress, 
+                        const newAddress = {
+                            ...shippingAddress,
                             isDefault: setAsDefault,
                             type: 'shipping',
                             id: Date.now().toString()
@@ -632,12 +637,12 @@ export default function Checkout() {
                         console.error("Error saving shipping address:", error);
                     }
                 }
-                
+
                 // Save billing address if requested and different from shipping
                 if (!sameAsBilling && billingAddressMode === 'new' && saveBillingForFuture && user) {
                     try {
-                        const newBillingAddress = { 
-                            ...billingAddress, 
+                        const newBillingAddress = {
+                            ...billingAddress,
                             isDefault: setBillingAsDefault,
                             type: 'billing',
                             id: (Date.now() + 1).toString()
@@ -651,13 +656,13 @@ export default function Checkout() {
                         console.error("Error saving billing address:", error);
                     }
                 }
-                
+
                 // Only remove items from cart if they're not Buy Now items
                 const isBuyNow = location.state?.buyNowProduct;
                 if (!isBuyNow) {
                     selectedCartItems.forEach(item => removeFromCart(item.id || item.productId));
                 }
-                
+
                 setOrderId(result.orderId);
                 setShowAnimation(true);
             } else {
@@ -673,7 +678,7 @@ export default function Checkout() {
 
     const validateForm = () => {
         const newErrors = {};
-        
+
         // Validate shipping address
         if (!shippingAddress.firstName.trim()) newErrors.firstName = 'First name is required';
         if (!shippingAddress.lastName.trim()) newErrors.lastName = 'Last name is required';
@@ -681,7 +686,7 @@ export default function Checkout() {
         if (!shippingAddress.city.trim()) newErrors.city = 'City is required';
         if (!shippingAddress.state.trim()) newErrors.state = 'State is required';
         if (!/^\d{6}$/.test(shippingAddress.pincode)) newErrors.pincode = 'Pincode must be exactly 6 digits';
-        
+
         // Validate GST number if checkbox is checked
         if (hasGST) {
             const gstValidationError = getGSTError(gstNumber);
@@ -692,7 +697,7 @@ export default function Checkout() {
                 setGstError('');
             }
         }
-        
+
         // Validate billing address if different from shipping
         if (!sameAsBilling) {
             if (!billingAddress.firstName.trim()) newErrors.billing_firstName = 'Billing first name is required';
@@ -702,7 +707,7 @@ export default function Checkout() {
             if (!billingAddress.state.trim()) newErrors.billing_state = 'Billing state is required';
             if (!/^\d{6}$/.test(billingAddress.pincode)) newErrors.billing_pincode = 'Billing pincode must be exactly 6 digits';
         }
-        
+
         if (step === 2 && !paymentMethod) newErrors.payment = 'Please select a payment method';
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -713,16 +718,20 @@ export default function Checkout() {
     };
 
     const handleContinue = async () => {
-        if (!auth.currentUser) {
+        // Use the same logged-in check as everywhere else in checkout (see the
+        // auth-state effect above) instead of `auth.currentUser` alone, which is
+        // never set for a phone-OTP login taken through the mock/dev shortcut -
+        // that was sending logged-in phone users straight back to the login modal.
+        if (!user) {
             window.dispatchEvent(new Event('openLoginModal'));
             return;
         }
         if (step === 1) {
-            if (validateForm()) { 
+            if (validateForm()) {
                 setValidationError('');
-                setStep(2); 
+                setStep(2);
             }
-            else { 
+            else {
                 // Check if billing address is the issue
                 const hasBillingErrors = Object.keys(errors).some(key => key.startsWith('billing_'));
                 if (hasBillingErrors && !sameAsBilling) {
@@ -771,7 +780,7 @@ export default function Checkout() {
     };
 
     // Filter selected items for payment
-    const selectedCheckoutItems = checkoutItems.filter(item => 
+    const selectedCheckoutItems = checkoutItems.filter(item =>
         selectedItems.has(item.id || item.productId)
     );
 
@@ -782,17 +791,17 @@ export default function Checkout() {
         couponDiscount: 0, // Calculate after we get product total
         shippingFee: shippingFee // Use estimated shipping fee
     });
-    
+
     // Calculate coupon discount on product pricing total
     const actualCouponDiscount = appliedCoupon ? (orderTotals.productPricingTotal * appliedCoupon.discountPercent / 100) : 0;
-    
+
     // Recalculate with actual coupon discount
     const finalOrderTotals = calculateOrderTotalsWithGSTInclusive(selectedCheckoutItems, {
         adminConfig,
         couponDiscount: actualCouponDiscount,
         shippingFee: shippingFee // Use estimated shipping fee
     });
-    
+
     // Use the final total from order totals calculation
     const finalTotal = finalOrderTotals.total;
     const subtotal = orderTotals.basePrice; // Base price for backend
@@ -803,23 +812,23 @@ export default function Checkout() {
             setCouponError('Please enter a coupon code');
             return;
         }
-        
+
         setApplyingCoupon(true);
         setCouponError('');
-        
+
         try {
             // Simulate API call - replace with actual API endpoint
             await new Promise(resolve => setTimeout(resolve, 500));
-            
+
             // Mock coupon validation - replace with actual API call
             const mockCoupons = {
                 'SAVE10': { code: 'SAVE10', discountPercent: 10, description: '10% off' },
                 'SAVE20': { code: 'SAVE20', discountPercent: 20, description: '20% off' },
                 'FIRST50': { code: 'FIRST50', discountPercent: 50, description: '50% off for first order' }
             };
-            
+
             const coupon = mockCoupons[couponCode.toUpperCase()];
-            
+
             if (coupon) {
                 setAppliedCoupon(coupon);
                 setCouponError('');
@@ -847,11 +856,11 @@ export default function Checkout() {
             alert(`Only ${item.stock || 99} items available in stock`);
             return;
         }
-        
+
         // For Buy Now items, update the state directly
         if (item.isBuyNow) {
-            setCheckoutItems(prevItems => 
-                prevItems.map(i => 
+            setCheckoutItems(prevItems =>
+                prevItems.map(i =>
                     i.id === item.id ? { ...i, quantity: newQuantity } : i
                 )
             );
@@ -867,12 +876,12 @@ export default function Checkout() {
 
     if (isOrdered) {
         return (
-            <CheckoutSuccess 
-                orderId={orderId} 
-                shippingAddress={shippingAddress} 
-                paymentMethod={paymentMethod} 
-                subtotal={subtotal} 
-                user={user} 
+            <CheckoutSuccess
+                orderId={orderId}
+                shippingAddress={shippingAddress}
+                paymentMethod={paymentMethod}
+                subtotal={subtotal}
+                user={user}
             />
         );
     }
@@ -892,7 +901,7 @@ export default function Checkout() {
                             <ArrowLeft size={16} />
                             Back to Shopping
                         </Link>
-                        
+
                         {/* Right: Title and Subtitle */}
                         <div className="text-right">
                             <h1 className="text-2xl font-black text-gray-900 tracking-tight">
@@ -916,107 +925,107 @@ export default function Checkout() {
                             <div className="p-6 space-y-3">
                                 {(() => {
                                     // Separate selected and unselected items
-                                    const selectedItemsList = checkoutItems.filter(item => 
+                                    const selectedItemsList = checkoutItems.filter(item =>
                                         selectedItems.has(item.id || item.productId)
                                     );
-                                    const unselectedItemsList = checkoutItems.filter(item => 
+                                    const unselectedItemsList = checkoutItems.filter(item =>
                                         !selectedItems.has(item.id || item.productId)
                                     );
-                                    
+
                                     // Show all selected items + limited unselected items
                                     const unselectedToShow = showAllItems ? unselectedItemsList : unselectedItemsList.slice(0, 3);
                                     const itemsToDisplay = [...selectedItemsList, ...unselectedToShow];
-                                    
+
                                     return itemsToDisplay.map((item) => {
                                         const itemId = item.id || item.productId;
                                         const isSelected = selectedItems.has(itemId);
                                         const isBuyNowItem = item.isBuyNow;
-                                        
+
                                         return (
                                             <div key={itemId} className={`flex gap-3 items-center p-3 rounded-xl border bg-white hover:shadow-sm transition-all ${isSelected ? 'border-primary border-2' : 'border-gray-200'}`}>
-                                            {/* Checkbox */}
-                                            <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={() => toggleItemSelection(itemId)}
-                                                className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer flex-shrink-0"
-                                            />
-                                            
-                                            <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
-                                                <img src={item.imageUrl || item.image} alt={item.name} className="w-full h-full object-cover" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-0.5">
-                                                    <h4 className="font-semibold text-gray-900 truncate text-sm">{item.name}</h4>
-                                                    {isBuyNowItem && (
-                                                        <span className="bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded font-semibold flex-shrink-0">
-                                                            Buy Now
-                                                        </span>
+                                                {/* Checkbox */}
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => toggleItemSelection(itemId)}
+                                                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer flex-shrink-0"
+                                                />
+
+                                                <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
+                                                    <img src={item.imageUrl || item.image} alt={item.name} className="w-full h-full object-cover" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-0.5">
+                                                        <h4 className="font-semibold text-gray-900 truncate text-sm">{item.name}</h4>
+                                                        {isBuyNowItem && (
+                                                            <span className="bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded font-semibold flex-shrink-0">
+                                                                Buy Now
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {/* Variant Info */}
+                                                    {(item.selectedColor || item.selectedSize || item.selectedStorage || item.selections?.storage || item.selections?.memory) && (
+                                                        <div className="flex gap-1 text-xs text-gray-600 flex-wrap">
+                                                            {(item.selectedColor || item.selections?.color) && (
+                                                                <span className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">
+                                                                    {item.selectedColor || item.selections?.color}
+                                                                </span>
+                                                            )}
+                                                            {(item.selectedSize || item.selections?.size) && (
+                                                                <span className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">
+                                                                    {item.selectedSize || item.selections?.size}
+                                                                </span>
+                                                            )}
+                                                            {(item.selectedStorage || item.selections?.storage) && (
+                                                                <span className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">
+                                                                    {item.selectedStorage || item.selections?.storage?.label || item.selections?.storage}
+                                                                </span>
+                                                            )}
+                                                            {(item.selectedMemory || item.selections?.memory) && (
+                                                                <span className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">
+                                                                    {item.selectedMemory || item.selections?.memory?.label || item.selections?.memory}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className="text-xs font-medium text-gray-500">Qty:</span>
+                                                        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                                                            <button onClick={() => handleQuantityChange(item, item.quantity - 1)} disabled={item.quantity <= 1}
+                                                                className="w-5 h-5 flex items-center justify-center rounded bg-white hover:bg-gray-50 disabled:opacity-50 text-xs">
+                                                                <Minus size={10} />
+                                                            </button>
+                                                            <span className="w-6 text-center font-semibold text-gray-900 text-xs">{item.quantity}</span>
+                                                            <button onClick={() => handleQuantityChange(item, item.quantity + 1)} disabled={item.quantity >= (item.stock || 99)}
+                                                                className="w-5 h-5 flex items-center justify-center rounded bg-white hover:bg-gray-50 disabled:opacity-50 text-xs">
+                                                                <Plus size={10} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                                                    <PriceDisplay product={item} size="sm" showBadge={false} />
+                                                    {!isBuyNowItem && (
+                                                        <button onClick={() => handleRemove(itemId)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Remove">
+                                                            <Trash2 size={14} />
+                                                        </button>
                                                     )}
                                                 </div>
-                                                {/* Variant Info */}
-                                                {(item.selectedColor || item.selectedSize || item.selectedStorage || item.selections?.storage || item.selections?.memory) && (
-                                                    <div className="flex gap-1 text-xs text-gray-600 flex-wrap">
-                                                        {(item.selectedColor || item.selections?.color) && (
-                                                            <span className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">
-                                                                {item.selectedColor || item.selections?.color}
-                                                            </span>
-                                                        )}
-                                                        {(item.selectedSize || item.selections?.size) && (
-                                                            <span className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">
-                                                                {item.selectedSize || item.selections?.size}
-                                                            </span>
-                                                        )}
-                                                        {(item.selectedStorage || item.selections?.storage) && (
-                                                            <span className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">
-                                                                {item.selectedStorage || item.selections?.storage?.label || item.selections?.storage}
-                                                            </span>
-                                                        )}
-                                                        {(item.selectedMemory || item.selections?.memory) && (
-                                                            <span className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">
-                                                                {item.selectedMemory || item.selections?.memory?.label || item.selections?.memory}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                )}
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    <span className="text-xs font-medium text-gray-500">Qty:</span>
-                                                    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                                                        <button onClick={() => handleQuantityChange(item, item.quantity - 1)} disabled={item.quantity <= 1}
-                                                            className="w-5 h-5 flex items-center justify-center rounded bg-white hover:bg-gray-50 disabled:opacity-50 text-xs">
-                                                            <Minus size={10} />
-                                                        </button>
-                                                        <span className="w-6 text-center font-semibold text-gray-900 text-xs">{item.quantity}</span>
-                                                        <button onClick={() => handleQuantityChange(item, item.quantity + 1)} disabled={item.quantity >= (item.stock || 99)}
-                                                            className="w-5 h-5 flex items-center justify-center rounded bg-white hover:bg-gray-50 disabled:opacity-50 text-xs">
-                                                            <Plus size={10} />
-                                                        </button>
-                                                    </div>
-                                                </div>
                                             </div>
-                                            <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                                                <PriceDisplay product={item} size="sm" showBadge={false} />
-                                                {!isBuyNowItem && (
-                                                    <button onClick={() => handleRemove(itemId)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Remove">
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                });
+                                        );
+                                    });
                                 })()}
-                                
+
                                 {/* Show More / Show Less Button - Only for unselected items */}
                                 {(() => {
-                                    const unselectedCount = checkoutItems.filter(item => 
+                                    const unselectedCount = checkoutItems.filter(item =>
                                         !selectedItems.has(item.id || item.productId)
                                     ).length;
-                                    
+
                                     if (unselectedCount <= 3) return null;
-                                    
+
                                     const hiddenCount = unselectedCount - 3;
-                                    
+
                                     return (
                                         <div className="pt-4 border-t border-gray-100">
                                             <button
@@ -1155,8 +1164,8 @@ export default function Checkout() {
                     </div>
 
                     {/* Order Summary Sidebar */}
-                    <CheckoutOrderSummary 
-                        subtotal={subtotal} 
+                    <CheckoutOrderSummary
+                        subtotal={subtotal}
                         couponDiscount={actualCouponDiscount}
                         finalTotal={finalTotal}
                         selectedItems={selectedCheckoutItems}
@@ -1178,7 +1187,3 @@ export default function Checkout() {
         </div>
     );
 }
-
-
-
-
