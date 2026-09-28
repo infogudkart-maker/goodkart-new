@@ -55,8 +55,9 @@ export default function SellerInvoiceModal({ seller, onClose, onDownloadPDF, isD
 
     const totalProducts = seller.financials?.totalProducts || 0;
     const totalRevenue = seller.financials?.totalRevenue || 0;
-    const platformCharges = totalRevenue * 0.1;
-    const amountToReceive = totalRevenue * 0.9;
+    // Fees come from the backend (admin-configured seller fee % + caps + 18% GST on fee), not a hard-coded 10%.
+    const platformCharges = (seller.financials?.platformFees || 0) + (seller.financials?.platformFeeGST || 0);
+    const amountToReceive = seller.financials?.netPayout ?? (totalRevenue - platformCharges);
     const deliveredCount = seller.financials?.deliveredCount || 0;
     
     return (
@@ -253,16 +254,16 @@ export default function SellerInvoiceModal({ seller, onClose, onDownloadPDF, isD
                                 <TrendingUp size={24} style={{ color: '#10b981' }} />
                             </div>
                             <p style={{ fontSize: '0.85rem', color: '#10b981', fontWeight: 600, marginBottom: '0.5rem' }}>Total Revenue Earned</p>
-                            <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#059669', margin: 0 }}>Rs.{totalRevenue.toLocaleString()}</h2>
+                            <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#059669', margin: 0 }}>Rs.{Math.round(totalRevenue).toLocaleString('en-IN')}</h2>
                         </div>
 
-                        {/* Platform Charges (10%) */}
+                        {/* Platform Charges (incl. GST) */}
                         <div className="glass-card" style={{ padding: '1.5rem', border: '2px solid #ef4444', background: 'rgba(239, 68, 68, 0.05)' }}>
                             <div className="flex items-center justify-between mb-2">
                                 <TrendingDown size={24} style={{ color: '#ef4444' }} />
                             </div>
-                            <p style={{ fontSize: '0.85rem', color: '#ef4444', fontWeight: 600, marginBottom: '0.5rem' }}>Platform Charges (10%)</p>
-                            <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#dc2626', margin: 0 }}>Rs.{platformCharges.toLocaleString()}</h2>
+                            <p style={{ fontSize: '0.85rem', color: '#ef4444', fontWeight: 600, marginBottom: '0.5rem' }}>Platform Charges (incl. GST)</p>
+                            <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#dc2626', margin: 0 }}>Rs.{Math.round(platformCharges).toLocaleString('en-IN')}</h2>
                         </div>
 
                         {/* Amount to Receive */}
@@ -271,7 +272,7 @@ export default function SellerInvoiceModal({ seller, onClose, onDownloadPDF, isD
                                 <DollarSign size={24} style={{ color: '#10b981' }} />
                             </div>
                             <p style={{ fontSize: '0.85rem', color: '#10b981', fontWeight: 600, marginBottom: '0.5rem' }}>Amount to Receive</p>
-                            <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#059669', margin: 0 }}>Rs.{amountToReceive.toLocaleString()}</h2>
+                            <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#059669', margin: 0 }}>Rs.{Math.round(amountToReceive).toLocaleString('en-IN')}</h2>
                         </div>
                     </div>
                     <p className="text-muted" style={{ fontSize: '0.85rem', textAlign: 'center', marginTop: '1rem' }}>

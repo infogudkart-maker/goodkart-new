@@ -107,7 +107,7 @@ export default function VariantsEditor({
                                             <span style={{ fontWeight: 600, color: '#334155' }}>{size}</span>
                                             <div style={{ position: 'relative' }}>
                                                 <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontWeight: 'bold' }}>₹</span>
-                                                <input type="number" placeholder={product.price || '0'} style={sty.priceInput}
+                                                <input type="number" placeholder={(Number(product.discountPrice) > 0 && Number(product.discountPrice) < Number(product.price) ? product.discountPrice : product.price) || '0'} style={sty.priceInput}
                                                     value={sizePrices[size] || ''}
                                                     onChange={e => setSizePrices({ ...sizePrices, [size]: e.target.value })} />
                                             </div>

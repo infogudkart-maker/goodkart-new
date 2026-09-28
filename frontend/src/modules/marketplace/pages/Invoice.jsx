@@ -4,6 +4,16 @@ import { useEffect, useState } from 'react';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/modules/shared/config/firebase';
 import html2pdf from 'html2pdf.js';
+import { getProductPricing } from '@/modules/shared/utils/priceUtils';
+
+// GST-inclusive unit price actually charged. Legacy items without priceWithGST must fall back to the
+// SELLING price (discount applied) and NOT item.price, which is the MRP.
+const getInclusiveUnitPrice = (item) => {
+    if (item.priceWithGST) return item.priceWithGST;
+    const gst = item.gstPercent === 0 ? 0 : (item.gstPercent || 18);
+    const selling = item.basePrice || getProductPricing(item).finalPrice || 0;
+    return selling * (1 + gst / 100);
+};
 
 export default function Invoice() {
     const navigate = useNavigate();
@@ -294,7 +304,7 @@ export default function Invoice() {
                     <tbody>
                         {order.items && order.items.map((item, index) => {
                             const qty = item.quantity || 1;
-                            const inclusivePrice = item.priceWithGST || item.price || 0;
+                            const inclusivePrice = getInclusiveUnitPrice(item);
                             const gstPercent = item.gstPercent || 18;
                             
                             // Back out taxable value from inclusive price
@@ -385,7 +395,7 @@ export default function Invoice() {
         if (order.items) {
             order.items.forEach(item => {
                 const qty = item.quantity || 1;
-                const inclusivePrice = item.priceWithGST || item.price || 0;
+                const inclusivePrice = getInclusiveUnitPrice(item);
                 const gstPercent = item.gstPercent || 18;
                 const taxableUnitPrice = inclusivePrice / (1 + (gstPercent / 100));
                 const taxableAmount = taxableUnitPrice * qty;

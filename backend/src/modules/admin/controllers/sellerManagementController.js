@@ -1,5 +1,7 @@
 'use strict';
 const { admin, db } = require('../../../config/firebase');
+const { getItemLineRevenue, computeSellerItemEarnings } = require('../../../utils/pricing');
+const { getAdminConfig } = require('../../../shared/services/adminConfigService');
 const cache = require('../../../utils/cache');
 const { formatDateDDMMYYYY } = require('../../../utils/dateFormat');
 
@@ -120,6 +122,8 @@ const getAllSellers = async (req, res) => {
         }
 
         const financialsMap = {};
+        let feeConfig = {};
+        try { feeConfig = await getAdminConfig(); } catch (e) { console.error('[GetAllSellers] admin config load failed:', e.message); }
         const oneWeekAgo = new Date();
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
         
@@ -134,20 +138,28 @@ const getAllSellers = async (req, res) => {
             order.items.forEach(item => {
                 if (!item.sellerId) return;
                 if (!sellerHits[item.sellerId]) {
-                    sellerHits[item.sellerId] = { rev: 0, weeklyRev: 0 };
+                    sellerHits[item.sellerId] = { rev: 0, weeklyRev: 0, fee: 0, feeGST: 0, net: 0 };
                     financialsMap[item.sellerId] = financialsMap[item.sellerId] || { 
                         totalRevenue: 0, 
                         deliveredCount: 0,
-                        weeklySales: 0 
+                        weeklySales: 0,
+                        platformFees: 0, platformFeeGST: 0, netPayout: 0
                     };
                 }
-                const itemRevenue = (item.price || 0) * (item.quantity || 1);
+                const itemRevenue = getItemLineRevenue(item);
+                const earn = computeSellerItemEarnings(item, feeConfig);
+                sellerHits[item.sellerId].fee += earn.fee;
+                sellerHits[item.sellerId].feeGST += earn.feeGST;
+                sellerHits[item.sellerId].net += earn.net;
                 sellerHits[item.sellerId].rev += itemRevenue;
                 if (isWithinWeek) {
                     sellerHits[item.sellerId].weeklyRev += itemRevenue;
                 }
             });
-            Object.entries(sellerHits).forEach(([sid, { rev, weeklyRev }]) => {
+            Object.entries(sellerHits).forEach(([sid, { rev, weeklyRev, fee, feeGST, net }]) => {
+                financialsMap[sid].platformFees += fee;
+                financialsMap[sid].platformFeeGST += feeGST;
+                financialsMap[sid].netPayout += net;
                 financialsMap[sid].totalRevenue += rev;
                 financialsMap[sid].weeklySales += weeklyRev;
                 financialsMap[sid].deliveredCount += 1;
@@ -157,7 +169,7 @@ const getAllSellers = async (req, res) => {
         const sellers = sellersSnap.docs.map(doc => {
             const sellerData = doc.data();
             const userData = userMap[doc.id] || {};
-            const fin = financialsMap[doc.id] || { totalRevenue: 0, deliveredCount: 0, weeklySales: 0 };
+            const fin = financialsMap[doc.id] || { totalRevenue: 0, deliveredCount: 0, weeklySales: 0, platformFees: 0, platformFeeGST: 0, netPayout: 0 };
             
             let formattedDate = 'N/A';
             const dateField = sellerData.createdAt || sellerData.appliedAt;
@@ -206,7 +218,10 @@ const getAllSellers = async (req, res) => {
                     totalProducts: productCountMap[doc.id] || 0,
                     totalRevenue: fin.totalRevenue,
                     deliveredCount: fin.deliveredCount,
-                    weeklySales: fin.weeklySales
+                    weeklySales: fin.weeklySales,
+                    platformFees: Math.round(fin.platformFees * 100) / 100,
+                    platformFeeGST: Math.round(fin.platformFeeGST * 100) / 100,
+                    netPayout: Math.round(fin.netPayout * 100) / 100
                 }
             };
         });
