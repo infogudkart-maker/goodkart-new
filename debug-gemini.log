@@ -1,0 +1,29 @@
+[2026-09-28T05:18:04.469Z] --- START NEW EXTRACTION (MIME: image/png) ---
+[2026-09-28T05:18:04.473Z] Attempt with: gemini-flash-latest | Attempt: 1
+[2026-09-28T05:18:05.359Z] ERROR with gemini-flash-latest: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent: [403 Forbidden] Your API key was reported as leaked. Please use another API key.
+[2026-09-28T05:18:06.363Z] Attempt with: gemini-flash-latest | Attempt: 2
+[2026-09-28T05:18:07.099Z] ERROR with gemini-flash-latest: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent: [403 Forbidden] Your API key was reported as leaked. Please use another API key.
+[2026-09-28T05:18:08.105Z] Attempt with: gemini-1.5-flash | Attempt: 1
+[2026-09-28T05:18:08.519Z] ERROR with gemini-1.5-flash: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent: [404 Not Found] models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.
+[2026-09-28T05:18:08.520Z] Model gemini-1.5-flash not found, trying next...
+[2026-09-28T05:18:08.521Z] Attempt with: gemini-1.5-flash | Attempt: 2
+[2026-09-28T05:18:08.878Z] ERROR with gemini-1.5-flash: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent: [404 Not Found] models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.
+[2026-09-28T05:18:08.879Z] Model gemini-1.5-flash not found, trying next...
+[2026-09-28T05:18:08.880Z] Attempt with: gemini-1.5-flash-latest | Attempt: 1
+[2026-09-28T05:18:09.220Z] ERROR with gemini-1.5-flash-latest: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent: [404 Not Found] models/gemini-1.5-flash-latest is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.
+[2026-09-28T05:18:09.221Z] Model gemini-1.5-flash-latest not found, trying next...
+[2026-09-28T05:18:09.222Z] Attempt with: gemini-1.5-flash-latest | Attempt: 2
+[2026-09-28T05:18:09.558Z] ERROR with gemini-1.5-flash-latest: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent: [404 Not Found] models/gemini-1.5-flash-latest is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.
+[2026-09-28T05:18:09.560Z] Model gemini-1.5-flash-latest not found, trying next...
+[2026-09-28T05:18:09.561Z] Attempt with: gemini-2.0-flash-exp | Attempt: 1
+[2026-09-28T05:18:09.884Z] ERROR with gemini-2.0-flash-exp: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent: [404 Not Found] models/gemini-2.0-flash-exp is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.
+[2026-09-28T05:18:09.885Z] Model gemini-2.0-flash-exp not found, trying next...
+[2026-09-28T05:18:09.885Z] Attempt with: gemini-2.0-flash-exp | Attempt: 2
+[2026-09-28T05:18:10.275Z] ERROR with gemini-2.0-flash-exp: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent: [404 Not Found] models/gemini-2.0-flash-exp is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.
+[2026-09-28T05:18:10.276Z] Model gemini-2.0-flash-exp not found, trying next...
+[2026-09-28T05:18:10.277Z] Attempt with: gemini-1.5-pro | Attempt: 1
+[2026-09-28T05:18:10.619Z] ERROR with gemini-1.5-pro: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent: [404 Not Found] models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.
+[2026-09-28T05:18:10.620Z] Model gemini-1.5-pro not found, trying next...
+[2026-09-28T05:18:10.622Z] Attempt with: gemini-1.5-pro | Attempt: 2
+[2026-09-28T05:18:10.944Z] ERROR with gemini-1.5-pro: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent: [404 Not Found] models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.
+[2026-09-28T05:18:10.946Z] Model gemini-1.5-pro not found, trying next...

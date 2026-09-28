@@ -12,7 +12,7 @@ import {
     Package
 } from 'lucide-react';
 import { listenToCart, removeFromCart, updateCartItemQuantity } from '@/modules/shared/utils/cartUtils';
-import { auth } from '@/modules/shared/config/firebase';
+import { getCurrentUser } from '@/modules/shared/utils/api';
 import PriceDisplay from '@/modules/shared/components/common/PriceDisplay';
 
 export default function Cart() {
@@ -81,7 +81,7 @@ export default function Cart() {
     const total = subtotal;
 
     const handleCheckout = () => {
-        if (!auth.currentUser) {
+        if (!getCurrentUser()) {
             window.dispatchEvent(new Event('openLoginModal'));
             return;
         }
@@ -315,7 +315,7 @@ export default function Cart() {
                                             const itemName = item.name || 'Product';
                                             const truncatedName = itemName.length > 25 ? itemName.substring(0, 25) + '...' : itemName;
                                             const itemPrice = (item.priceWithGST || item.price) * item.quantity;
-                                            
+
                                             return (
                                                 <div key={item.id} className="grid grid-cols-12 gap-2 text-xs text-gray-600 px-1 py-1 hover:bg-gray-50 rounded">
                                                     <div className="col-span-6 truncate" title={itemName}>{truncatedName}</div>
@@ -385,4 +385,3 @@ export default function Cart() {
         </div>
     );
 }
-

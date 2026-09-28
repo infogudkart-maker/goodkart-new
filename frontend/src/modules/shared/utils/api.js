@@ -59,6 +59,52 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs = 25000) {
  * @param {object} options - Standard fetch options (method, body, etc.)
  * @returns {Promise<Response>}
  */
+/**
+ * Reads the locally-stored user object for the current login context
+ * ('seller_user' when a seller session is active, 'user' otherwise), with the
+ * same seller->consumer fallback used by authFetch.
+ */
+function getStoredUser() {
+    try {
+        const loginCtx = sessionStorage.getItem('loginContext');
+        const storageKey = loginCtx === 'SELLER' ? 'seller_user' : 'user';
+        let localUser = JSON.parse(localStorage.getItem(storageKey));
+        if (!localUser && storageKey === 'seller_user') {
+            localUser = JSON.parse(localStorage.getItem('user'));
+        }
+        return localUser;
+    } catch (_) {
+        return null;
+    }
+}
+
+/**
+ * Returns the effective logged-in user, or null if nobody is logged in.
+ *
+ * `auth.currentUser` (Firebase) only reflects a REAL Firebase Auth session -
+ * email/password, Google, and a genuine Firebase phone-OTP sign-in all set it.
+ * The mock/dev phone-OTP shortcut (ALLOW_TEST_LOGIN, see AuthModal.jsx) never
+ * signs the user into Firebase at all - it only saves them to localStorage - so
+ * code that gates "am I logged in?" on `auth.currentUser` alone incorrectly
+ * treats every one of those phone-number logins as logged out. This checks
+ * both, preferring the real Firebase user's fields when one exists.
+ */
+export function getCurrentUser() {
+    const stored = getStoredUser();
+    if (auth.currentUser) {
+        return {
+            ...stored,
+            uid: auth.currentUser.uid,
+            email: auth.currentUser.email || stored?.email || '',
+            phoneNumber: auth.currentUser.phoneNumber || stored?.phone || '',
+        };
+    }
+    if (stored?.uid) {
+        return { ...stored, phoneNumber: stored.phone || '' };
+    }
+    return null;
+}
+
 export async function authFetch(path, options = {}) {
     const url = `${API_BASE}${path}`;
     const headers = { ...options.headers };
@@ -72,7 +118,7 @@ export async function authFetch(path, options = {}) {
         const loginCtx = sessionStorage.getItem('loginContext');
         const storageKey = loginCtx === 'SELLER' ? 'seller_user' : 'user';
         localUser = JSON.parse(localStorage.getItem(storageKey));
-        
+
         // Fallback: If we're in SELLER context but no seller_user exists yet (e.g. during onboarding),
         // try to use the regular 'user' credentials.
         if (!localUser && storageKey === 'seller_user') {
