@@ -5,18 +5,8 @@ const { PassThrough } = require('stream');
 const cloudinary = require('../../config/cloudinary');
 const { db, admin } = require('../../config/firebase');
 
-const COMPANY_INFO = {
-    name: 'Goodkart Private Limited',
-    addressLine1: 'No. 123, MG Road, Koramangala',
-    addressLine2: 'Bangalore, Karnataka, India',
-    addressLine3: 'Bangalore, 560034, Karnataka, IN-KA, IN- 560034',
-    city: 'Bangalore',
-    pincode: '560034',
-    state: 'Karnataka',
-    country: 'IN',
-    gstin: '29AABCS1234M1ZX',
-    pan: 'AABCS1234M'
-};
+const COMPANY_INFO = require('../../config/company');
+const { getItemPriceWithGST, getItemMrp, getItemSellingPrice, sumFeePercent } = require('../../utils/pricing');
 
 async function getLogoBase64() {
     try {
@@ -103,6 +93,15 @@ exports.generateInvoice = async (order) => {
     });
 };
 
+function orderDateStr(order) {
+    let d = order.createdAt;
+    if (d && typeof d.toDate === 'function') d = d.toDate();
+    else if (d && d._seconds) d = new Date(d._seconds * 1000);
+    else if (d) d = new Date(d);
+    if (!d || isNaN(d.getTime())) d = new Date();
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 async function renderPage(doc, order, logoDataUrl, getName, title, isDetailed) {
     renderHeader(doc, logoDataUrl, title, order.orderId);
     
@@ -113,10 +112,10 @@ async function renderPage(doc, order, logoDataUrl, getName, title, isDetailed) {
     
     // Details Grid
     doc.fontSize(8).font('Helvetica-Bold').text('Bill of Supply Number: ', 30, y, { continued: true }).font('Helvetica').text(order.orderId);
-    doc.font('Helvetica-Bold').text('Nature of transaction: ', 350, y, { continued: true }).font('Helvetica').text('INTRA');
+    doc.font('Helvetica-Bold').text('Nature of transaction: ', 350, y, { continued: true }).font('Helvetica').text(String((order.billingAddress || order.shippingAddress || {}).state || 'Karnataka').toLowerCase() === 'karnataka' ? 'INTRA' : 'INTER');
     y += 12;
-    doc.font('Helvetica-Bold').text('Bill of Supply Date: ', 30, y, { continued: true }).font('Helvetica').text(new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }));
-    doc.font('Helvetica-Bold').text('Nature Of Supply: ', 350, y, { continued: true }).font('Helvetica').text('Service');
+    doc.font('Helvetica-Bold').text('Bill of Supply Date: ', 30, y, { continued: true }).font('Helvetica').text(orderDateStr(order));
+    doc.font('Helvetica-Bold').text('Nature Of Supply: ', 350, y, { continued: true }).font('Helvetica').text('Goods & Service');
     y += 12;
     doc.font('Helvetica-Bold').text('Order Number: ', 30, y, { continued: true }).font('Helvetica').text(order.orderId);
     
@@ -214,7 +213,7 @@ function renderItemsTable(doc, order, y) {
     
     let tGross = 0;
     (order.items || []).forEach(item => {
-        const qty = item.quantity || 1, price = item.priceWithGST || item.price || 0, gst = item.gstPercent || 18;
+        const qty = item.quantity || 1, price = getItemPriceWithGST(item), gst = item.gstPercent === 0 ? 0 : (item.gstPercent || 18);
         const taxable = price / (1 + (gst / 100)) * qty, gross = price * qty;
         tGross += gross;
         
@@ -236,8 +235,11 @@ function renderPlatformTable(doc, order, y) {
     y += 20;
     
     let tTaxable = 0;
-    (order.items || []).forEach(i => tTaxable += (i.priceWithGST || i.price || 0) / (1 + (i.gstPercent || 18) / 100) * (i.quantity || 1));
-    const pfBase = tTaxable * 0.035, pfTotal = pfBase * 1.18;
+    (order.items || []).forEach(i => tTaxable += getItemPriceWithGST(i) / (1 + (i.gstPercent === 0 ? 0 : (i.gstPercent || 18)) / 100) * (i.quantity || 1));
+    const orderFeePercent = sumFeePercent(order.platformFeeBreakdown) || 3.5;
+    const pfBase = (order.effectivePlatformFee !== null && order.effectivePlatformFee !== undefined && !isNaN(Number(order.effectivePlatformFee)))
+        ? Number(order.effectivePlatformFee) : tTaxable * orderFeePercent / 100;
+    const pfTotal = pfBase * 1.18;
     
     doc.fontSize(7).font('Helvetica').rect(30, y, 535, 25).stroke('#000000').text('Platform Service Fee', 35, y + 5).fontSize(6).fillColor('#666666').text('SAC: 998314', 35, y + 15).fillColor('#000000').fontSize(7).text('998314', cols[1], y + 10).text(`₹${pfBase.toFixed(2)}`, cols[2], y + 10).text(`₹${pfBase.toFixed(2)}`, cols[3], y + 10).text(`₹${(pfBase*0.09).toFixed(2)}`, cols[4], y + 10).text(`₹${(pfBase*0.09).toFixed(2)}`, cols[5], y + 10).font('Helvetica-Bold').text(`₹${pfTotal.toFixed(2)}`, cols[6], y + 10);
     y += 25;

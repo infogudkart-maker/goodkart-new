@@ -1,5 +1,6 @@
 'use strict';
 const { admin, db } = require('../../../config/firebase');
+const { getItemLineRevenue } = require('../../../utils/pricing');
 const cache = require('../../../utils/cache');
 const { formatDateDDMMYYYY } = require('../../../utils/dateFormat');
 const shiprocketService = require('../../../shared/services/shiprocketService');
@@ -67,7 +68,7 @@ const getDashboardData = async (req, res) => {
             );
 
             if (order.sellerId === uid || sellerItems.length > 0) {
-                const orderSales = sellerItems.reduce((acc, item) => acc + ((item.price || 0) * (item.quantity || 0)), 0);
+                const orderSales = sellerItems.reduce((acc, item) => acc + getItemLineRevenue(item), 0);
                 totalSales += orderSales;
                 if (order.status === 'Processing') newOrdersCount++;
                 if (order.status === 'Pending') pendingOrdersCount++;
@@ -127,9 +128,20 @@ const addProduct = async (req, res) => {
         const price = Number(productData.price);
         if (isNaN(price) || price <= 0) return res.status(400).json({ success: false, message: "Invalid price" });
 
+        // Base price (price) is the MRP; discountPrice is the selling price and must be lower.
+        let discountPrice = null;
+        if (productData.discountPrice !== null && productData.discountPrice !== undefined && productData.discountPrice !== '') {
+            discountPrice = Number(productData.discountPrice);
+            if (isNaN(discountPrice) || discountPrice <= 0) discountPrice = null;
+            else if (discountPrice >= price) {
+                return res.status(400).json({ success: false, message: "Selling (discount) price must be lower than the base price (MRP)" });
+            }
+        }
+
         const newProduct = {
             ...productData,
             price,
+            discountPrice,
             sellerId,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             status: "Active"

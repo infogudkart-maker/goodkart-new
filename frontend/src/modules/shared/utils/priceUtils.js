@@ -25,7 +25,7 @@ export const getProductPricing = (product, selections = {}) => {
     let baseSellingPrice = baseOriginalPrice;  // Selling price - changes with variants
 
     // Determine if there's a discount and what the base selling price is
-    if (product.discountPrice !== null && product.discountPrice !== undefined && product.discountPrice !== '') {
+    if (product.discountPrice !== null && product.discountPrice !== undefined && product.discountPrice !== '' && Number(product.discountPrice) > 0) {
         const p2 = Number(product.discountPrice);
         const p1 = Number(product.price);
         

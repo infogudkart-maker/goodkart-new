@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getProductPricing } from '@/modules/shared/utils/priceUtils';
 import { Edit2, Eye, X, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { authFetch } from '@/modules/shared/utils/api';
@@ -195,6 +196,11 @@ export default function ProductViewModal({
             return;
         }
 
+        const mrpVal = parseFloat(editData.price);
+        const spVal = editData.discountPrice ? parseFloat(editData.discountPrice) : null;
+        if (spVal !== null && (isNaN(spVal) || spVal <= 0)) { alert('Selling price must be a positive number (or leave it empty).'); return; }
+        if (spVal !== null && spVal >= mrpVal) { alert('Selling price (after discount) must be lower than the Base Price / MRP.'); return; }
+
         const fullProduct = {
             id: editData.id,
             title: editData.name,
@@ -337,12 +343,12 @@ export default function ProductViewModal({
                                                         </select>
                                                     </div>
                                                     <div>
-                                                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>Base Price (₹)</label>
+                                                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>Base Price / MRP (₹)</label>
                                                         <input type="number" required style={{ width: '100%', padding: '0.875rem 1rem', border: '1.5px solid #e2e8f0', borderRadius: '12px' }}
                                                             value={editData.price} onChange={e => setEditData({ ...editData, price: e.target.value })} />
                                                     </div>
                                                     <div>
-                                                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>Discount Price (₹)</label>
+                                                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600 }}>Selling Price after Discount (₹)</label>
                                                         <input type="number" style={{ width: '100%', padding: '0.875rem 1rem', border: '1.5px solid #e2e8f0', borderRadius: '12px' }}
                                                             value={editData.discountPrice} onChange={e => setEditData({ ...editData, discountPrice: e.target.value })} placeholder="Optional" />
                                                     </div>
@@ -442,18 +448,24 @@ export default function ProductViewModal({
                                     </div>
 
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:gap-4">
-                                        <div style={{ background: '#f1f5f9', borderRadius: '12px', padding: '1rem' }}>
-                                            <label style={{ display: 'block', marginBottom: '0.2rem', color: '#64748b', fontSize: '0.8rem', textTransform: 'uppercase' }}>Price</label>
-                                            <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>₹{Number(selectedProduct.price).toLocaleString('en-IN')}</p>
-                                        </div>
-                                        <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '1rem' }}>
-                                            <label style={{ display: 'block', marginBottom: '0.2rem', color: '#64748b', fontSize: '0.8rem', textTransform: 'uppercase' }}>Discounted</label>
-                                            {selectedProduct.discountPrice ? (
-                                                <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#16a34a', margin: 0 }}>₹{Number(selectedProduct.discountPrice).toLocaleString('en-IN')}</p>
-                                            ) : (
-                                                <p style={{ fontSize: '1rem', fontStyle: 'italic', color: '#94a3b8', margin: '0.5rem 0 0 0' }}>None</p>
-                                            )}
-                                        </div>
+                                        {(() => {
+                                            const pr = getProductPricing(selectedProduct);
+                                            return (
+                                                <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '1rem', gridColumn: 'span 2' }}>
+                                                    <label style={{ display: 'block', marginBottom: '0.2rem', color: '#64748b', fontSize: '0.8rem', textTransform: 'uppercase' }}>Selling Price (customer pays)</label>
+                                                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', flexWrap: 'wrap' }}>
+                                                        <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a' }}>₹{pr.finalPrice.toLocaleString('en-IN')}</span>
+                                                        {pr.strikethroughPrice > pr.finalPrice && (
+                                                            <>
+                                                                <span style={{ fontSize: '1.05rem', color: '#94a3b8', textDecoration: 'line-through' }}>₹{pr.strikethroughPrice.toLocaleString('en-IN')}</span>
+                                                                <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#16a34a' }}>({Math.round(((pr.strikethroughPrice - pr.finalPrice) / pr.strikethroughPrice) * 100)}% OFF)</span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                    <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#64748b' }}>MRP / Base price: ₹{pr.strikethroughPrice.toLocaleString('en-IN')} · GST extra as applicable</p>
+                                                </div>
+                                            );
+                                        })()}
                                         <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '1rem' }}>
                                             <label style={{ display: 'block', marginBottom: '0.2rem', color: '#64748b', fontSize: '0.8rem', textTransform: 'uppercase' }}>Stock</label>
                                             <p style={{ fontSize: '1.5rem', fontWeight: 700, color: selectedProduct.stock > 0 ? '#1e293b' : '#ef4444', margin: 0 }}>{selectedProduct.stock}</p>

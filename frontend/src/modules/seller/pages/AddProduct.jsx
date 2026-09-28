@@ -37,6 +37,12 @@ export default function AddProduct() {
     const [product, setProduct] = useState({
         name: '', price: '', discountPrice: '', category: '', subCategory: '', stock: '', description: '', image: '', images: [], gstPercent: '', customCategory: ''
     });
+    // Customers pay the selling (discount) price; platform fees are computed on it, not on the MRP.
+    const effectiveSellingPrice = (() => {
+        const mrp = parseFloat(product.price) || 0;
+        const sp = parseFloat(product.discountPrice) || 0;
+        return sp > 0 && sp < mrp ? sp : mrp;
+    })();
 
     // Fee constants
     const USER_FEE_PERCENT = 3;
@@ -220,6 +226,11 @@ export default function AddProduct() {
         }
         if (!sellerId) { alert("Please login first"); return; }
 
+        const mrpVal = parseFloat(product.price);
+        const spVal = product.discountPrice ? parseFloat(product.discountPrice) : null;
+        if (spVal !== null && (isNaN(spVal) || spVal <= 0)) { alert('Selling price must be a positive number (or leave it empty).'); setLoading(false); return; }
+        if (spVal !== null && spVal >= mrpVal) { alert('Selling price (after discount) must be lower than the Base Price / MRP.'); setLoading(false); return; }
+
         const fullProduct = {
             title: product.name,
             price: parseFloat(product.price),
@@ -380,7 +391,7 @@ export default function AddProduct() {
 
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
                                     <div>
-                                        <label style={sty.label}>Base Price (₹)</label>
+                                        <label style={sty.label}>Base Price / MRP (₹)</label>
                                         <div style={{ position: 'relative' }}>
                                             <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', fontWeight: 'bold', color: '#94a3b8' }}>₹</span>
                                             <input type="number" placeholder="0.00" required style={sty.priceInput}
@@ -388,12 +399,26 @@ export default function AddProduct() {
                                         </div>
                                     </div>
                                     <div>
-                                        <label style={sty.label}>Discount Price (₹)</label>
+                                        <label style={sty.label}>Selling Price after Discount (₹)</label>
                                         <div style={{ position: 'relative' }}>
                                             <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', fontWeight: 'bold', color: '#94a3b8' }}>₹</span>
                                             <input type="number" placeholder="Optional" style={sty.priceInput}
                                                 value={product.discountPrice} onChange={e => setProduct({ ...product, discountPrice: e.target.value })} />
                                         </div>
+                                        {(() => {
+                                            const mrp = parseFloat(product.price) || 0;
+                                            const sp = parseFloat(product.discountPrice) || 0;
+                                            if (!sp) return <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.25rem' }}>Leave empty if there is no discount. Customers pay this price.</p>;
+                                            if (mrp && sp >= mrp) return <p style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: '0.25rem', fontWeight: 600 }}>Selling price must be lower than the base price (MRP).</p>;
+                                            if (!mrp) return null;
+                                            return (
+                                                <p style={{ fontSize: '0.8rem', marginTop: '0.35rem', display: 'flex', gap: '6px', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                                                    <strong style={{ color: '#0f172a' }}>₹{sp.toLocaleString('en-IN')}</strong>
+                                                    <span style={{ textDecoration: 'line-through', color: '#94a3b8' }}>₹{mrp.toLocaleString('en-IN')}</span>
+                                                    <span style={{ color: '#16a34a', fontWeight: 700 }}>({Math.round(((mrp - sp) / mrp) * 100)}% OFF)</span>
+                                                </p>
+                                            );
+                                        })()}
                                     </div>
                                     <div>
                                         <label style={sty.label}>Stock Qty</label>
@@ -476,10 +501,10 @@ export default function AddProduct() {
                                                 }}
                                             >
                                                 <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.75rem', fontWeight: 500 }}>
-                                                    Based on product price: ₹{Number(product.price).toLocaleString()}
+                                                    Based on selling price: ₹{(Number(product.discountPrice) > 0 && Number(product.discountPrice) < Number(product.price) ? Number(product.discountPrice) : Number(product.price)).toLocaleString()}
                                                 </p>
                                                 {(() => {
-                                                    const basePrice = parseFloat(product.price) || 0;
+                                                    const basePrice = effectiveSellingPrice;
                                                     const breakdown = calculatePlatformFeeBreakdown(basePrice, platformFeeBreakdown);
                                                     const items = formatPlatformFeeBreakdown(breakdown);
                                                     
@@ -533,7 +558,7 @@ export default function AddProduct() {
                                                                     </div>
                                                                     <div style={{ textAlign: 'right', marginLeft: '1rem' }}>
                                                                         <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ec4899' }}>
-                                                                            ₹{((parseFloat(product.price) || 0) * 0.02).toFixed(2)}
+                                                                            ₹{(effectiveSellingPrice * 0.02).toFixed(2)}
                                                                         </div>
                                                                         <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
                                                                             2%
@@ -613,7 +638,8 @@ export default function AddProduct() {
                                         {product.name && <div><strong>Title:</strong> {product.name}</div>}
                                         <div><strong>Category:</strong> {config?.icon} {product.category}</div>
                                         {product.subCategory && <div><strong>Subcategory:</strong> {product.subCategory}</div>}
-                                        {product.price && <div><strong>Base Price:</strong> ₹{Number(product.price).toLocaleString()}</div>}
+                                        {product.price && <div><strong>Base Price (MRP):</strong> ₹{Number(product.price).toLocaleString()}</div>}
+                                        {product.discountPrice && <div><strong>Selling Price:</strong> ₹{Number(product.discountPrice).toLocaleString()}</div>}
                                         {product.stock && <div><strong>Stock:</strong> {product.stock} units</div>}
                                         {selectedSizes.length > 0 && <div><strong>Sizes:</strong> {selectedSizes.join(', ')}</div>}
                                         {selectedColors.length > 0 && <div><strong>Colors:</strong> {selectedColors.join(', ')}</div>}
