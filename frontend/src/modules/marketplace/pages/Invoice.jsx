@@ -1,8 +1,7 @@
 import { ArrowLeft, Download, Mail, Phone } from 'lucide-react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/modules/shared/config/firebase';
+import { authFetch } from '@/modules/shared/utils/api';
 import html2pdf from 'html2pdf.js';
 import { getProductPricing } from '@/modules/shared/utils/priceUtils';
 
@@ -32,26 +31,21 @@ export default function Invoice() {
             }
 
             try {
-                // First, try to find by document ID
-                let orderDoc = await getDoc(doc(db, 'orders', orderId));
+                // Fetch through the backend API (same as OrderTracking / dashboard).
+                // Reading Firestore directly from the client was blocked by security
+                // rules / test-login sessions, which made the invoice show
+                // "Invoice not found" even though the order existed.
+                const response = await authFetch(`/orders/${encodeURIComponent(orderId)}`);
 
-                if (orderDoc.exists()) {
-                    setOrder({ id: orderDoc.id, ...orderDoc.data() });
+                if (!response.ok) {
+                    setOrder(null);
                 } else {
-                    // If not found by document ID, search by orderId field
-                    const ordersRef = collection(db, 'orders');
-                    const q = query(ordersRef, where('orderId', '==', orderId));
-                    const querySnapshot = await getDocs(q);
-
-                    if (!querySnapshot.empty) {
-                        const doc = querySnapshot.docs[0];
-                        setOrder({ id: doc.id, ...doc.data() });
-                    } else {
-                        setOrder(null);
-                    }
+                    const data = await response.json();
+                    setOrder(data.success && data.order ? data.order : null);
                 }
             } catch (error) {
-                // Error fetching order - silent fail
+                console.error('Error fetching order for invoice:', error);
+                setOrder(null);
             } finally {
                 setLoading(false);
             }
