@@ -24,7 +24,7 @@ app.use(cors({
     origin: [process.env.FRONTEND_URL, 'https://sellsathifrontend.onrender.com', 'http://localhost:5173', 'http://localhost:3000'].filter(Boolean),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-uid', 'x-role', 'X-Test-UID']
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-uid', 'x-role']
 }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -39,7 +39,7 @@ const rateLimit = require('express-rate-limit');
 
 // Global Logger (Diagnostic)
 app.use((req, res, next) => {
-    console.log(`[REQUEST] ${req.method} ${req.url} | UID: ${req.headers['x-test-uid'] || 'NONE'}`);
+    console.log(`[REQUEST] ${req.method} ${req.url}`);
     next();
 });
 

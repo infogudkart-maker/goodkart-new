@@ -1,8 +1,6 @@
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 
-const ADMIN_PHONE = '+917483743936';
-
 export default function ProtectedRoute({ children, requiredRole = null }) {
     const navigate = useNavigate();
     const [isAuthorized, setIsAuthorized] = useState(null);
@@ -22,7 +20,7 @@ export default function ProtectedRoute({ children, requiredRole = null }) {
 
                 // Check for admin access
                 if (requiredRole === 'ADMIN') {
-                    // Role must be ADMIN. Phone check is secondary/master-only.
+                    // Role must be ADMIN (the backend re-checks this on every admin request).
                     if (userData.role !== 'ADMIN') {
                         console.warn(`Unauthorized admin access - Role: ${userData.role}`);
                         setIsAuthorized(false);

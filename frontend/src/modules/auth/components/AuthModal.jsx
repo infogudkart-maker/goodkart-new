@@ -9,21 +9,6 @@ import PhoneOtpForm from './PhoneOtpForm';
 import EmailAuthForm from './EmailAuthForm';
 import './AuthModal.css';
 
-const TEST_CREDENTIALS = {
-    '+917483743936': { otp: '123456', role: 'ADMIN' },
-    '+919876543210': { otp: '123456', role: 'CONSUMER' },
-    '+917676879059': { otp: '123456', role: 'CONSUMER' },
-    '+919353469036': { otp: '741852', role: 'SELLER' },
-    '+916366151635': { otp: '123456', role: 'SELLER' },
-    '+919480290587': { otp: '123456', role: 'SELLER' },
-};
-
-// Test/dev-only shortcut that skips real SMS delivery for a fixed set of numbers.
-// Disabled in production builds by default so every real phone number always
-// gets a genuine OTP sent to it via Firebase. Opt back in for a deployed
-// environment (e.g. staging) by setting VITE_ALLOW_TEST_LOGIN=true.
-const ALLOW_TEST_LOGIN = import.meta.env.DEV || import.meta.env.VITE_ALLOW_TEST_LOGIN === 'true';
-
 /** Reads the server's own error message from a failed response (falls back to the status code). */
 async function serverErrorMessage(response) {
     try {
@@ -81,7 +66,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
     const [emailOtpStep, setEmailOtpStep] = useState('details'); // 'details' | 'otp'
     const [emailOtp, setEmailOtp] = useState('');
     const [confirmationResult, setConfirmationResult] = useState(null);
-    const [isTestNumber, setIsTestNumber] = useState(false);
     const [formData, setFormData] = useState({ fullName: '', dob: '', email: '', password: '', confirmPassword: '' });
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -211,7 +195,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
     const handleClose = () => {
         setStep('phone'); setPhone(''); setOtp(''); setGeneratedOtp(''); setError('');
         setNotice(null); setJustRegistered(false);
-        setConfirmationResult(null); setIsTestNumber(false); setIsRegistering(false);
+        setConfirmationResult(null); setIsRegistering(false);
         setIsEmailSignup(false); setIsEmailLogin(false);
         setEmailOtpStep('details'); setEmailOtp('');
         setFormData({ fullName: '', dob: '', email: '', password: '', confirmPassword: '' });
@@ -259,23 +243,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         } catch (e) { console.error('Recaptcha error:', e); cleanupRecaptcha(); }
     };
 
-    // Sends the OTP for a number that is registered: the mock/dev shortcut, or a real Firebase SMS.
+    // Sends a genuine OTP via Firebase Phone Auth for a number that is registered.
     const sendOtpNow = async (phoneNumber) => {
-        // Only take the mock/dev OTP shortcut when this build actually allows it
-        // (local dev, or a deployed env with VITE_ALLOW_TEST_LOGIN=true). The backend
-        // enforces the same rule (ALLOW_TEST_LOGIN in authController.js) and rejects
-        // isTest logins in production, so sending isTest:true here when ALLOW_TEST_LOGIN
-        // is false is exactly what was causing "Server returned 400" on the deployed site.
-        if (ALLOW_TEST_LOGIN) {
-            const randomOtp = TEST_CREDENTIALS[phoneNumber]?.otp || Math.floor(100000 + Math.random() * 900000).toString();
-            setGeneratedOtp(randomOtp);
-            setIsTestNumber(true);
-            setConfirmationResult({ isTestMode: true });
-            setStep('otp');
-            return;
-        }
-
-        // Real flow: send a genuine OTP via Firebase Phone Auth
         setLoading(true);
         try {
             setupRecaptcha();
@@ -284,7 +253,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
             const result = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
             setConfirmationResult(result);
             setGeneratedOtp('');
-            setIsTestNumber(false);
             setStep('otp');
         } catch (err) {
             console.error('Failed to send OTP:', err);
@@ -365,24 +333,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         e.preventDefault();
         if (otp.length !== 6) { setError('Please enter a valid 6-digit OTP'); return; }
 
-        const expectedOtp = generatedOtp || TEST_CREDENTIALS[`+91${phone}`]?.otp;
-        if (expectedOtp && otp !== expectedOtp) {
-            setError('Invalid OTP. Please enter the OTP code shown above.');
-            return;
-        }
-
         setLoading(true); setError('');
         try {
             const phoneNumber = `+91${phone}`;
-            let idToken = null;
-            if (!isTestNumber || !confirmationResult?.isTestMode) {
-                const result = await confirmationResult.confirm(otp);
-                idToken = await result.user.getIdToken();
-            }
+            const result = await confirmationResult.confirm(otp);
+            const idToken = await result.user.getIdToken();
             const endpoint = isRegistering ? '/auth/register' : '/auth/login';
             const payload = isRegistering
-                ? { idToken, phone: phoneNumber, email: formData.email, password: formData.password, isTest: isTestNumber, otp: isTestNumber ? otp : undefined }
-                : (isTestNumber ? { phone: phoneNumber, otp, isTest: true } : { idToken });
+                ? { idToken, phone: phoneNumber, email: formData.email, password: formData.password }
+                : { idToken };
             const response = await authFetch(endpoint, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...payload, fullName: formData.fullName, dob: formData.dob }),
@@ -521,18 +480,17 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         }
         setLoading(true);
         try {
-            let idToken = null, isTestMode = false;
+            let idToken = null;
             try {
                 const cred = await signInWithEmailAndPassword(auth, formData.email, formData.password);
                 idToken = await cred.user.getIdToken();
             } catch (loginErr) {
                 if (loginErr.code === 'auth/user-not-found' || loginErr.code === 'auth/invalid-credential') {
-                    try { const reg = await createUserWithEmailAndPassword(auth, formData.email, formData.password); idToken = await reg.user.getIdToken(); }
-                    catch (regErr) { if (regErr.code === 'auth/operation-not-allowed') isTestMode = true; else throw regErr; }
-                } else if (loginErr.code === 'auth/operation-not-allowed') isTestMode = true;
-                else throw loginErr;
+                    const reg = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+                    idToken = await reg.user.getIdToken();
+                } else throw loginErr;
             }
-            const response = await authFetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken, isTest: isTestMode, email: formData.email, password: formData.password }) });
+            const response = await authFetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken, email: formData.email }) });
 
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}`);
@@ -605,7 +563,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         setLoading(true);
         try {
             let idToken = isGoogleRegistration ? googleIdToken : null;
-            let isTestMode = false;
 
             if (!isGoogleRegistration) {
                 try {
@@ -613,8 +570,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                     await updateProfile(cred.user, { displayName: "User" });
                     idToken = await cred.user.getIdToken();
                 } catch (fbErr) {
-                    if (fbErr.code === 'auth/operation-not-allowed') isTestMode = true;
-                    else if (fbErr.code === 'auth/email-already-in-use') {
+                    if (fbErr.code === 'auth/email-already-in-use') {
                         // The email already has a Firebase account. If it was created by an earlier attempt with
                         // this same password, just sign in and carry on registering.
                         const { signInWithEmailAndPassword } = await import('firebase/auth');
@@ -640,7 +596,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     idToken,
-                    isTest: isTestMode,
                     email: formData.email,
                     phone: isEmailSignup && !isGoogleRegistration ? null : (phone ? `+91${phone}` : null),
                     password: formData.password || null,
@@ -664,7 +619,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                 persistUser(data, {
                     phone: phone ? `+91${phone}` : null,
                     email: formData.email,
-                    isDevMode: isTestMode,
                     fullName: formData.fullName,
                     dob: formData.dob
                 }, isSellerSession);
