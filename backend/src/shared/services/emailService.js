@@ -3,8 +3,16 @@ const { Resend } = require('resend');
 const { getAdminConfig } = require('./adminConfigService');
 const { db } = require('../../config/firebase');
 
-const FRONTEND_URL =
-    process.env.FRONTEND_URL || 'https://goodkart.onrender.com';
+// ============================================================
+// SITE CONFIGURATION (website uses hash routing: /#/path)
+// ============================================================
+
+const SITE_URL = 'https://www.goodkart.in';
+
+const siteLink = (routePath = '') => `${SITE_URL}/#${routePath}`;
+
+const CUSTOMER_DASHBOARD_URL = siteLink('/dashboard');
+const SELLER_DASHBOARD_URL = siteLink('/seller/dashboard');
 
 // ============================================================
 // BRAND CONFIGURATION
@@ -406,7 +414,7 @@ const emailLayout = ({
                     <!-- Logo header -->
                     <tr>
                         <td align="center" class="px" style="padding:22px 28px;background:#ffffff;border-bottom:1px solid #e2e8f0;">
-                            <a href="${FRONTEND_URL}" target="_blank" style="text-decoration:none;">
+                            <a href="${SITE_URL}" target="_blank" style="text-decoration:none;">
                                 <img src="${BRAND_LOGO_URL}" alt="${BRAND_NAME}" class="logo" height="42"
                                      style="display:block;height:42px;width:auto;margin:0 auto;" />
                             </a>
@@ -437,7 +445,7 @@ const emailLayout = ({
                             <p style="margin:0 0 10px 0;font-size:12px;color:#64748b;">${BRAND_TAGLINE}</p>
                             <p style="margin:0;font-size:12px;line-height:18px;color:#94a3b8;">
                                 &copy; ${new Date().getFullYear()} ${BRAND_NAME}. All rights reserved.<br>
-                                <a href="${FRONTEND_URL}" style="color:#94a3b8;text-decoration:underline;">Visit Website</a>
+                                <a href="${SITE_URL}" style="color:#94a3b8;text-decoration:underline;">Visit Website</a>
                                 &nbsp;|&nbsp;
                                 <a href="mailto:${SUPPORT_EMAIL}" style="color:#94a3b8;text-decoration:underline;">Contact Us</a>
                             </p>
@@ -454,7 +462,7 @@ const emailLayout = ({
 `;
 
 // ============================================================
-// ORDER CONFIRMATION
+// ORDER CONFIRMATION (CUSTOMER)
 // ============================================================
 
 exports.sendOrderConfirmation = async (
@@ -502,7 +510,7 @@ exports.sendOrderConfirmation = async (
                 ? 'Your official invoice is attached to this email. You can also track your order and manage your account from your dashboard.'
                 : 'You can track your order and download your invoice from your dashboard.', 'font-size:14px;')}
 
-            ${button(`${FRONTEND_URL}/dashboard`, 'Track My Order')}
+            ${button(CUSTOMER_DASHBOARD_URL, 'Track My Order')}
         `;
 
         const mailOptions = {
@@ -611,7 +619,7 @@ exports.sendSellerNotification = async (
                 '#92400e'
             )}
 
-            ${button(`${FRONTEND_URL}/seller/dashboard`, 'Go to Seller Dashboard')}
+            ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
         `;
 
         const mailOptions = {
@@ -688,7 +696,7 @@ exports.sendSellerBlockedEmail = async (
 
             ${h3('Next Steps')}
             ${list([
-                `Review our <a href="${FRONTEND_URL}/terms" style="color:${BRAND_COLOR};">Terms of Service</a> and <a href="${FRONTEND_URL}/seller-policies" style="color:${BRAND_COLOR};">Seller Policies</a>`,
+                `Review our <a href="${siteLink('/terms')}" style="color:${BRAND_COLOR};">Terms of Service</a> and <a href="${siteLink('/seller-policies')}" style="color:${BRAND_COLOR};">Seller Policies</a>`,
                 'Contact our support team to discuss the block',
                 'Provide any necessary documentation or clarification',
                 'Wait for admin review and potential unblock'
@@ -770,7 +778,7 @@ exports.sendSellerUnblockedEmail = async (
 
             ${h3('Important Reminders')}
             ${list([
-                `Please ensure compliance with all <a href="${FRONTEND_URL}/seller-policies" style="color:${BRAND_COLOR};">Seller Policies</a>`,
+                `Please ensure compliance with all <a href="${siteLink('/seller-policies')}" style="color:${BRAND_COLOR};">Seller Policies</a>`,
                 'Maintain high-quality product listings',
                 'Provide excellent customer service',
                 'Respond promptly to customer inquiries',
@@ -784,7 +792,7 @@ exports.sendSellerUnblockedEmail = async (
                 '#92400e'
             )}
 
-            ${button(`${FRONTEND_URL}/seller/dashboard`, 'Go to Seller Dashboard')}
+            ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
 
             ${p('Thank you for your patience and understanding. We look forward to having you back as an active seller on our platform!', 'font-size:14px;color:#64748b;')}
         `;
@@ -870,10 +878,10 @@ exports.sendSellerApprovalEmail = async (
                 'Start receiving orders!'
             ], true)}
 
-            ${button(`${FRONTEND_URL}/seller/dashboard`, 'Go to Seller Dashboard')}
+            ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
 
             ${notice(
-                `<strong>📋 Important:</strong> Please review our <a href="${FRONTEND_URL}/seller-policies" style="color:${BRAND_COLOR};">Seller Policies</a> and <a href="${FRONTEND_URL}/terms" style="color:${BRAND_COLOR};">Terms of Service</a> to ensure compliance.`,
+                `<strong>📋 Important:</strong> Please review our <a href="${siteLink('/seller-policies')}" style="color:${BRAND_COLOR};">Seller Policies</a> and <a href="${siteLink('/terms')}" style="color:${BRAND_COLOR};">Terms of Service</a> to ensure compliance.`,
                 '#fef3c7',
                 '#f59e0b',
                 '#92400e'
@@ -958,7 +966,7 @@ exports.sendSellerRejectionEmail = async (
             ${h3('Next Steps')}
             ${p('If you believe this decision was made in error or would like to reapply in the future, please:')}
             ${list([
-                `Review our <a href="${FRONTEND_URL}/seller-requirements" style="color:${BRAND_COLOR};">Seller Requirements</a>`,
+                `Review our <a href="${siteLink('/seller-requirements')}" style="color:${BRAND_COLOR};">Seller Requirements</a>`,
                 'Ensure all documentation is complete and accurate',
                 'Contact our support team for clarification',
                 'Consider reapplying after addressing the concerns'
@@ -1070,8 +1078,37 @@ exports.notifySellers = async (
             `[NotifySellers] Notifying ${sellerIds.length} seller(s) for order ${orderData.orderId}`
         );
 
+        // Helper: read email from the users collection
+        const getUserEmail = async (uid) => {
+            try {
+                const userDoc =
+                    await db
+                        .collection('users')
+                        .doc(uid)
+                        .get();
+
+                // Works for both Admin SDK (property)
+                // and client SDK (function)
+                const userExists =
+                    typeof userDoc.exists === 'function'
+                        ? userDoc.exists()
+                        : userDoc.exists;
+
+                return userExists
+                    ? (userDoc.data().email || null)
+                    : null;
+            } catch (err) {
+                console.error(
+                    `[NotifySellers] users lookup failed for ${uid}:`,
+                    err.message
+                );
+                return null;
+            }
+        };
+
         // Batch fetch seller emails
         const sellerEmails = {};
+        const foundInSellers = new Set();
 
         // Firestore 'in' query supports up to 10 items
         for (
@@ -1102,48 +1139,43 @@ exports.notifySellers = async (
                     const doc of sellersSnap.docs
                 ) {
 
+                    foundInSellers.add(doc.id);
+
                     const sellerData =
                         doc.data();
 
-                    if (
-                        sellerData.sellerStatus ===
-                        'APPROVED'
-                    ) {
+                    const status =
+                        String(sellerData.sellerStatus || '')
+                            .toUpperCase();
 
-                        let email =
-                            sellerData.email ||
-                            sellerData.contactEmail;
+                    if (status !== 'APPROVED') {
 
-                        // If not found, fetch from users
-                        if (!email) {
+                        console.warn(
+                            `[NotifySellers] Seller ${doc.id} skipped - status is "${sellerData.sellerStatus}" (needs APPROVED)`
+                        );
 
-                            const userDoc =
-                                await db
-                                    .collection('users')
-                                    .doc(doc.id)
-                                    .get();
+                        continue;
+                    }
 
-                            // Works for both Admin SDK (property)
-                            // and client SDK (function)
-                            const userExists =
-                                typeof userDoc.exists === 'function'
-                                    ? userDoc.exists()
-                                    : userDoc.exists;
+                    let email =
+                        sellerData.email ||
+                        sellerData.contactEmail;
 
-                            if (userExists) {
+                    // If not found, fetch from users
+                    if (!email) {
+                        email = await getUserEmail(doc.id);
+                    }
 
-                                email =
-                                    userDoc.data().email;
+                    if (email) {
 
-                            }
-                        }
+                        sellerEmails[doc.id] =
+                            email;
 
-                        if (email) {
+                    } else {
 
-                            sellerEmails[doc.id] =
-                                email;
-
-                        }
+                        console.warn(
+                            `[NotifySellers] Seller ${doc.id} has no email in sellers or users`
+                        );
 
                     }
 
@@ -1156,6 +1188,23 @@ exports.notifySellers = async (
                     batchError
                 );
 
+            }
+
+        }
+
+        // Sellers missing from the 'sellers' collection: try the users collection
+        for (const sellerId of sellerIds) {
+
+            if (foundInSellers.has(sellerId)) continue;
+
+            console.warn(
+                `[NotifySellers] Seller ${sellerId} not found in 'sellers' collection, trying users`
+            );
+
+            const fallbackEmail = await getUserEmail(sellerId);
+
+            if (fallbackEmail) {
+                sellerEmails[sellerId] = fallbackEmail;
             }
 
         }
@@ -1255,7 +1304,7 @@ exports.sendOrderCancellation = async (
 
             ${p('The refund (if any) will be processed according to our refund policy. You can check the status of your refund in your dashboard.', 'font-size:14px;')}
 
-            ${button(`${FRONTEND_URL}/dashboard`, 'Go to Dashboard')}
+            ${button(CUSTOMER_DASHBOARD_URL, 'Go to Dashboard')}
 
             ${p('We hope to serve you again soon. Happy shopping!', 'font-size:14px;color:#64748b;text-align:center;')}
         `;
@@ -1347,7 +1396,7 @@ exports.sendOutOfStockNotification = async (
                 '#991b1b'
             )}
 
-            ${button(`${FRONTEND_URL}/seller/dashboard`, 'Update Stock Now')}
+            ${button(SELLER_DASHBOARD_URL, 'Update Stock Now')}
         `;
 
         const mailOptions = {
@@ -1425,7 +1474,7 @@ exports.sendProductRemovedNotification = async (
 
             ${p(`This product is no longer visible to customers on the website. If you believe this was done in error or have questions, please contact us using the details below.`, 'font-size:14px;')}
 
-            ${button(`${FRONTEND_URL}/seller/dashboard`, 'Go to Seller Dashboard')}
+            ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
         `;
 
         const mailOptions = {
@@ -1503,7 +1552,7 @@ exports.sendProductRestoredNotification = async (
 
             ${p('Your product is now visible to customers and available for purchase. You can manage your products and view sales in your seller dashboard.', 'font-size:14px;')}
 
-            ${button(`${FRONTEND_URL}/seller/dashboard`, 'Go to Seller Dashboard', '#16a34a')}
+            ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard', '#16a34a')}
         `;
 
         const mailOptions = {
