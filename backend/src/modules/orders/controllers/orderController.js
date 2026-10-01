@@ -5,12 +5,85 @@ const invoiceService = require('../../../shared/services/invoiceService');
 const emailService = require('../../../shared/services/emailService');
 const { reduceStock, replenishStock } = require('../../../utils/stockUtils');
 const shiprocketService = require('../../../shared/services/shiprocketService');
+const path = require('path');
+const fs = require('fs');
 
-const ORDERS_CACHE_TTL = 120; // 2 minutes in seconds
+const ORDERS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+const toIso = (value) =>
+    value?.toDate?.() ? value.toDate().toISOString() : value;
+
+const serializeOrder = (id, data) => ({
+    id,
+    ...data,
+    createdAt: toIso(data.createdAt),
+    updatedAt: toIso(data.updatedAt),
+    deliveredAt: toIso(data.deliveredAt),
+    cancelledAt: toIso(data.cancelledAt),
+    paymentCollectedAt: toIso(data.paymentCollectedAt),
+    shiprocketCreatedAt: toIso(data.shiprocketCreatedAt)
+});
+
+const isValidEmail = (value) =>
+    typeof value === 'string' &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
 /**
- * Handles placing a new order.
+ * Find the customer's email address.
+ * Order data first, then users collection, then Firebase Auth.
  */
+const resolveCustomerEmail = async (uid, orderData = {}) => {
+    const candidates = [
+        orderData.email,
+        orderData.customerEmail,
+        orderData.customerInfo?.email,
+        orderData.shippingAddress?.email,
+        orderData.billingAddress?.email
+    ];
+
+    for (const candidate of candidates) {
+        if (isValidEmail(candidate)) return candidate.trim();
+    }
+
+    if (!uid) return null;
+
+    try {
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (userDoc.exists) {
+            const userEmail = userDoc.data()?.email;
+            if (isValidEmail(userEmail)) return userEmail.trim();
+        }
+    } catch (err) {
+        console.error('[Email] users lookup failed:', err.message);
+    }
+
+    try {
+        const authUser = await admin.auth().getUser(uid);
+        if (isValidEmail(authUser?.email)) return authUser.email.trim();
+    } catch (err) {
+        console.error('[Email] auth lookup failed:', err.message);
+    }
+
+    return null;
+};
+
+const resolveCustomerName = (orderData = {}) => {
+    if (orderData.customerName) return orderData.customerName;
+
+    const addr = orderData.shippingAddress || orderData.billingAddress || {};
+    const name = `${addr.firstName || ''} ${addr.lastName || ''}`.trim();
+
+    return name || 'Customer';
+};
+
+// ============================================================
+// PLACE ORDER
+// ============================================================
+
 const placeOrder = async (req, res) => {
     try {
         const { uid, orderData } = req.body;
@@ -25,19 +98,49 @@ const placeOrder = async (req, res) => {
         });
 
         const orderId = orderRef.id;
-        const fullOrder = { ...orderData, orderId: orderData.orderId || orderId, documentId: orderId };
+        const customerEmail = await resolveCustomerEmail(uid, orderData);
 
+        const fullOrder = {
+            ...orderData,
+            orderId: orderData.orderId || orderId,
+            documentId: orderId,
+            customerName: resolveCustomerName(orderData),
+            email: customerEmail || orderData.email
+        };
+
+        // Save the resolved email on the order (used by cancellation email)
+        if (customerEmail && customerEmail !== orderData.email) {
+            orderRef.update({ email: customerEmail })
+                .catch(err => console.error('[PlaceOrder] Failed to save email on order:', err.message));
+        }
+
+        // 1) Invoice (independent, must never block emails)
+        let invoicePath = null;
         try {
-            const invoiceUrl = await invoiceService.generateInvoice(fullOrder);
-            await orderRef.update({ invoiceGenerated: true, invoiceUrl });
-            if (orderData.email) {
-                emailService.sendOrderConfirmation(orderData.email, fullOrder, invoiceUrl).catch(err => console.error(err));
-            }
-            // Notify sellers about the new order
-            emailService.notifySellers(fullOrder).catch(err => console.error('[PlaceOrder] Seller notification error:', err));
+            invoicePath = await invoiceService.generateInvoice(fullOrder);
+            await orderRef.update({ invoiceGenerated: true, invoicePath });
         } catch (e) {
             console.error("Invoice skip:", e.message);
         }
+
+        // 2) Customer order confirmation (sent even if invoice failed)
+        if (customerEmail) {
+            emailService
+                .sendOrderConfirmation(customerEmail, fullOrder, invoicePath)
+                .then(result => {
+                    if (!result) {
+                        console.error(`[PlaceOrder] Customer confirmation FAILED for order ${fullOrder.orderId}`);
+                    }
+                })
+                .catch(err => console.error('[PlaceOrder] Customer email error:', err));
+        } else {
+            console.warn(`[PlaceOrder] No customer email found for uid ${uid}, order ${fullOrder.orderId}`);
+        }
+
+        // 3) Seller notifications (independent)
+        emailService
+            .notifySellers(fullOrder)
+            .catch(err => console.error('[PlaceOrder] Seller notification error:', err));
 
         // Invalidate user's order cache
         cache.invalidate(`userOrders_${uid}`, 'adminAllOrders');
@@ -50,14 +153,15 @@ const placeOrder = async (req, res) => {
 
         return res.status(200).json({ success: true, orderId, message: "Order placed successfully" });
     } catch (error) {
+        console.error("PLACE ORDER ERROR:", error);
         return res.status(500).json({ success: false, message: "Order placement failed" });
     }
 };
 
-/**
- * Get orders for a specific user.
- * Cached per user for 2 minutes.
- */
+// ============================================================
+// GET USER ORDERS
+// ============================================================
+
 const getUserOrders = async (req, res) => {
     try {
         const { uid } = req.params;
@@ -66,20 +170,7 @@ const getUserOrders = async (req, res) => {
         if (cached) return res.status(200).json({ success: true, orders: cached });
 
         const snapshot = await db.collection("orders").where("userId", "==", uid).get();
-        const orders = snapshot.docs.map(doc => {
-            const data = doc.data();
-            // Convert Firestore Timestamps to ISO strings
-            return {
-                id: doc.id,
-                ...data,
-                createdAt: data.createdAt?.toDate?.() ? data.createdAt.toDate().toISOString() : data.createdAt,
-                updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : data.updatedAt,
-                deliveredAt: data.deliveredAt?.toDate?.() ? data.deliveredAt.toDate().toISOString() : data.deliveredAt,
-                cancelledAt: data.cancelledAt?.toDate?.() ? data.cancelledAt.toDate().toISOString() : data.cancelledAt,
-                paymentCollectedAt: data.paymentCollectedAt?.toDate?.() ? data.paymentCollectedAt.toDate().toISOString() : data.paymentCollectedAt,
-                shiprocketCreatedAt: data.shiprocketCreatedAt?.toDate?.() ? data.shiprocketCreatedAt.toDate().toISOString() : data.shiprocketCreatedAt
-            };
-        });
+        const orders = snapshot.docs.map(doc => serializeOrder(doc.id, doc.data()));
         orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
         cache.set(cacheKey, orders, ORDERS_CACHE_TTL);
@@ -89,10 +180,10 @@ const getUserOrders = async (req, res) => {
     }
 };
 
-/**
- * Get an order by ID.
- * Cached per order for 5 minutes.
- */
+// ============================================================
+// GET ORDER BY ID
+// ============================================================
+
 const getOrderById = async (req, res) => {
     try {
         const { orderId } = req.params;
@@ -105,29 +196,9 @@ const getOrderById = async (req, res) => {
         if (!doc.exists) {
             const query = await db.collection("orders").where("orderId", "==", orderId).limit(1).get();
             if (query.empty) return res.status(404).json({ success: false, message: "Order not found" });
-            const data = query.docs[0].data();
-            order = {
-                id: query.docs[0].id,
-                ...data,
-                createdAt: data.createdAt?.toDate?.() ? data.createdAt.toDate().toISOString() : data.createdAt,
-                updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : data.updatedAt,
-                deliveredAt: data.deliveredAt?.toDate?.() ? data.deliveredAt.toDate().toISOString() : data.deliveredAt,
-                cancelledAt: data.cancelledAt?.toDate?.() ? data.cancelledAt.toDate().toISOString() : data.cancelledAt,
-                paymentCollectedAt: data.paymentCollectedAt?.toDate?.() ? data.paymentCollectedAt.toDate().toISOString() : data.paymentCollectedAt,
-                shiprocketCreatedAt: data.shiprocketCreatedAt?.toDate?.() ? data.shiprocketCreatedAt.toDate().toISOString() : data.shiprocketCreatedAt
-            };
+            order = serializeOrder(query.docs[0].id, query.docs[0].data());
         } else {
-            const data = doc.data();
-            order = {
-                id: doc.id,
-                ...data,
-                createdAt: data.createdAt?.toDate?.() ? data.createdAt.toDate().toISOString() : data.createdAt,
-                updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : data.updatedAt,
-                deliveredAt: data.deliveredAt?.toDate?.() ? data.deliveredAt.toDate().toISOString() : data.deliveredAt,
-                cancelledAt: data.cancelledAt?.toDate?.() ? data.cancelledAt.toDate().toISOString() : data.cancelledAt,
-                paymentCollectedAt: data.paymentCollectedAt?.toDate?.() ? data.paymentCollectedAt.toDate().toISOString() : data.paymentCollectedAt,
-                shiprocketCreatedAt: data.shiprocketCreatedAt?.toDate?.() ? data.shiprocketCreatedAt.toDate().toISOString() : data.shiprocketCreatedAt
-            };
+            order = serializeOrder(doc.id, doc.data());
         }
 
         cache.set(cacheKey, order);
@@ -137,17 +208,18 @@ const getOrderById = async (req, res) => {
     }
 };
 
-/**
- * Cancel an order.
- */
+// ============================================================
+// CANCEL ORDER
+// ============================================================
+
 const cancelOrder = async (req, res) => {
     try {
         const { orderId } = req.params;
         const { cancellationReason } = req.body;
         const uid = req.user?.uid;
-        
+
         console.log(`[CANCEL REQUEST] Order: ${orderId} | User: ${uid} | Reason: ${cancellationReason}`);
-        
+
         if (!uid) {
             console.error("[CANCEL] Missing user UID in request");
             return res.status(401).json({ success: false, message: "Authentication required" });
@@ -166,13 +238,11 @@ const cancelOrder = async (req, res) => {
 
         const orderData = orderSnap.data();
 
-        // Ensure the user owns the order
         if (orderData.uid !== uid && orderData.userId !== uid) {
             console.warn(`[CANCEL] Access Denied: User ${uid} trying to cancel order owned by ${orderData.userId || orderData.uid}`);
             return res.status(403).json({ success: false, message: "Access denied" });
         }
 
-        // Check if order can be cancelled
         if (orderData.status === "Cancelled") {
             console.log(`[CANCEL] Order ${orderId} is already cancelled. Returning success.`);
             return res.status(200).json({ success: true, message: "Order is already cancelled" });
@@ -183,7 +253,7 @@ const cancelOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: `Cannot cancel order in ${orderData.status} state` });
         }
 
-        // Handle Shiprocket cancellation if applicable
+        // Shiprocket cancellation
         if (orderData.shiprocketOrderId) {
             try {
                 const shiprocketResult = await shiprocketService.cancelOrder(orderData.shiprocketOrderId, orderId);
@@ -195,7 +265,7 @@ const cancelOrder = async (req, res) => {
             }
         }
 
-        // Determine refund information
+        // Refund information
         let refundInfo = null;
         if (orderData.paymentMethod === 'razorpay' || orderData.paymentMethod === 'online') {
             refundInfo = {
@@ -213,7 +283,6 @@ const cancelOrder = async (req, res) => {
             };
         }
 
-        // Update status with cancellation reason and refund details
         const updateData = {
             status: "Cancelled",
             cancellationReason: cancellationReason.trim(),
@@ -246,13 +315,11 @@ const cancelOrder = async (req, res) => {
         // Invalidate caches
         try {
             cache.invalidate(`userOrders_${uid}`, 'adminAllOrders');
-            
-            // Invalidate cache for ALL sellers in this order
+
             if (orderData.sellerId) {
                 cache.invalidate(`sellerDash_${orderData.sellerId}`);
             }
-            
-            // Also invalidate cache for sellers of individual items
+
             if (orderData.items && Array.isArray(orderData.items)) {
                 const sellerIds = new Set();
                 orderData.items.forEach(item => {
@@ -264,25 +331,32 @@ const cancelOrder = async (req, res) => {
                     cache.invalidate(`sellerDash_${sellerId}`);
                 });
             }
-            
+
             cache.invalidate('adminStats', 'allSellers');
         } catch (cacheErr) {
             console.error("CACHE INVALIDATION ERROR:", cacheErr);
-            // Don't throw, cache failure shouldn't block cancellation success message
         }
 
-        // Optional: Send cancellation email
-        if (orderData.email) {
-            emailService.sendOrderCancellation(orderData.email, {
-                orderId: orderData.orderId,
-                customerName: orderData.customerName,
-                total: orderData.total,
-                items: orderData.items
-            }).catch(e => console.error("Cancellation email error:", e));
+        // Cancellation email to the customer
+        try {
+            const customerEmail = await resolveCustomerEmail(uid, orderData);
+
+            if (customerEmail) {
+                emailService.sendOrderCancellation(customerEmail, {
+                    orderId: orderData.orderId || orderId,
+                    customerName: resolveCustomerName(orderData),
+                    total: orderData.total,
+                    items: orderData.items
+                }).catch(e => console.error("Cancellation email error:", e));
+            } else {
+                console.warn(`[CANCEL] No customer email found for order ${orderId}`);
+            }
+        } catch (emailErr) {
+            console.error("Cancellation email lookup error:", emailErr);
         }
 
-        return res.status(200).json({ 
-            success: true, 
+        return res.status(200).json({
+            success: true,
             message: "Order cancelled successfully",
             refundInfo
         });
@@ -292,24 +366,23 @@ const cancelOrder = async (req, res) => {
     }
 };
 
-/**
- * Get reviewable orders for a user
- */
+// ============================================================
+// REVIEWABLE ORDERS
+// ============================================================
+
 const getReviewableOrders = async (req, res) => {
     try {
         const { uid } = req.params;
-        
-        // Get all delivered orders for the user
+
         const snapshot = await db.collection("orders")
             .where("userId", "==", uid)
             .where("status", "==", "Delivered")
             .get();
 
-        // Get all reviews by this user to filter out already reviewed products
         const reviewsSnapshot = await db.collection("reviews")
             .where("userId", "==", uid)
             .get();
-        
+
         const reviewedProductIds = new Set();
         reviewsSnapshot.forEach(doc => {
             const reviewData = doc.data();
@@ -323,7 +396,6 @@ const getReviewableOrders = async (req, res) => {
             const data = doc.data();
             for (const item of data.items || []) {
                 const productId = item.productId || item.id;
-                // Only include if not already reviewed
                 if (!reviewedProductIds.has(productId)) {
                     reviewableOrders.push({
                         orderId: data.orderId || doc.id,
@@ -340,11 +412,12 @@ const getReviewableOrders = async (req, res) => {
         console.error("Fetch Reviewable orders error:", error);
         return res.status(500).json({ success: false, message: "Failed to fetch reviewable orders" });
     }
-}
+};
 
-/**
- * Download/Redirect to Invoice
- */
+// ============================================================
+// DOWNLOAD INVOICE
+// ============================================================
+
 const downloadInvoice = async (req, res) => {
     try {
         const { orderId } = req.params;
@@ -360,21 +433,37 @@ const downloadInvoice = async (req, res) => {
         }
 
         const order = docSnap.data();
-        
-        // Force regeneration during development/testing to see layout changes immediately
-        console.log(`[INVOICE] Generating fresh invoice for order: ${orderId}`);
-        const invoiceUrl = await invoiceService.generateInvoice({ ...order, documentId: docSnap.id });
-        await docSnap.ref.update({ invoiceGenerated: true, invoiceUrl });
-        return res.redirect(invoiceUrl);
+
+        if (regenerate === 'true') {
+            console.log(`[INVOICE] Regenerating invoice for order: ${orderId}`);
+            const invPath = await invoiceService.generateInvoice({ ...order, documentId: docSnap.id });
+            await docSnap.ref.update({ invoiceGenerated: true, invoicePath: invPath });
+            return res.sendFile(invPath);
+        }
+
+        if (!order.invoicePath) {
+            const invPath = await invoiceService.generateInvoice({ ...order, documentId: docSnap.id });
+            await docSnap.ref.update({ invoiceGenerated: true, invoicePath: invPath });
+            return res.sendFile(invPath);
+        }
+
+        if (fs.existsSync(order.invoicePath)) {
+            return res.sendFile(order.invoicePath);
+        } else {
+            const invPath = await invoiceService.generateInvoice({ ...order, documentId: docSnap.id });
+            await docSnap.ref.update({ invoiceGenerated: true, invoicePath: invPath });
+            return res.sendFile(invPath);
+        }
     } catch (error) {
         console.error("Invoice download error:", error);
         return res.status(500).json({ success: false, message: "Failed to download invoice" });
     }
-}
+};
 
-/**
- * Fetch shipping label for an order.
- */
+// ============================================================
+// SHIPPING LABEL
+// ============================================================
+
 const getShippingLabel = async (req, res) => {
     try {
         let { orderId } = req.params;
@@ -385,7 +474,7 @@ const getShippingLabel = async (req, res) => {
             const query = await db.collection("orders").where("orderId", "==", orderId).limit(1).get();
             if (query.empty) return res.status(404).json({ success: false, message: "Order not found" });
             orderDoc = query.docs[0];
-            orderId = orderDoc.id; // Assign Firebase ID
+            orderId = orderDoc.id;
             orderData = orderDoc.data();
         } else {
             orderData = orderDoc.data();
@@ -398,7 +487,6 @@ const getShippingLabel = async (req, res) => {
             });
         }
 
-        // Return cached label URL if already fetched
         if (orderData.labelUrl) {
             return res.status(200).json({ success: true, labelUrl: orderData.labelUrl });
         }
@@ -406,7 +494,6 @@ const getShippingLabel = async (req, res) => {
         const labelResult = await shiprocketService.getShippingLabel([orderData.shipmentId]);
 
         if (labelResult.success && labelResult.labelUrl) {
-            // Cache result in Firestore
             await db.collection("orders").doc(orderId).update({ labelUrl: labelResult.labelUrl });
             return res.status(200).json({ success: true, labelUrl: labelResult.labelUrl });
         } else {
