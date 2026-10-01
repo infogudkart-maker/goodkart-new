@@ -1,3 +1,4 @@
+const fs = require('fs');
 const { Resend } = require('resend');
 const { getAdminConfig } = require('./adminConfigService');
 const { db } = require('../../config/firebase');
@@ -83,10 +84,50 @@ const sendWithResend = async (mailOptions) => {
         Array.isArray(mailOptions.attachments) &&
         mailOptions.attachments.length > 0
     ) {
-        emailData.attachments = mailOptions.attachments.map((attachment) => ({
-            path: attachment.path,
-            filename: attachment.filename
-        }));
+        const processedAttachments = [];
+
+        for (const attachment of mailOptions.attachments) {
+            try {
+                if (attachment.content) {
+                    // Already a Buffer / base64 string
+                    processedAttachments.push({
+                        filename: attachment.filename,
+                        content: attachment.content
+                    });
+                } else if (
+                    attachment.path &&
+                    /^https?:\/\//i.test(attachment.path)
+                ) {
+                    // Public URL - Resend can fetch it
+                    processedAttachments.push({
+                        filename: attachment.filename,
+                        path: attachment.path
+                    });
+                } else if (
+                    attachment.path &&
+                    fs.existsSync(attachment.path)
+                ) {
+                    // Local file - read it and send as buffer
+                    processedAttachments.push({
+                        filename: attachment.filename,
+                        content: fs.readFileSync(attachment.path)
+                    });
+                } else {
+                    console.warn(
+                        `⚠️ Attachment skipped (file not found): ${attachment.path}`
+                    );
+                }
+            } catch (attachErr) {
+                console.error(
+                    `⚠️ Attachment skipped (${attachment.filename}):`,
+                    attachErr.message
+                );
+            }
+        }
+
+        if (processedAttachments.length > 0) {
+            emailData.attachments = processedAttachments;
+        }
     }
 
     const { data, error } = await resend.emails.send(emailData);
@@ -139,7 +180,7 @@ const p = (html, extra = '') =>
 const h3 = (text) =>
     `<h3 style="margin:24px 0 10px 0;font-size:17px;line-height:24px;color:#0f172a;">${text}</h3>`;
 
-// Call-to-action button (bulletproof, works on mobile + desktop)
+// Call-to-action button (works on mobile + desktop)
 const button = (href, label, color = BRAND_COLOR) => `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:24px auto;">
         <tr>
@@ -202,7 +243,7 @@ const detailBox = (title, rows, bg = '#f8fafc', border = '#e2e8f0') => `
     </table>
 `;
 
-// Product rows (works for customer + seller emails)
+// Product rows (customer + seller emails)
 const renderItems = (items = []) => {
     if (!Array.isArray(items) || items.length === 0) return '';
 
@@ -314,7 +355,7 @@ const helpSection = () => `
     </table>
 `;
 
-// Master layout – responsive for mobile + desktop
+// Master layout - responsive for mobile + desktop
 const emailLayout = ({
     preheader = '',
     accent = BRAND_COLOR,
@@ -457,7 +498,9 @@ exports.sendOrderConfirmation = async (
 
             ${addressHtml}
 
-            ${p('Your official invoice is attached to this email. You can also track your order and manage your account from your dashboard.', 'font-size:14px;')}
+            ${p(invoicePath
+                ? 'Your official invoice is attached to this email. You can also track your order and manage your account from your dashboard.'
+                : 'You can track your order and download your invoice from your dashboard.', 'font-size:14px;')}
 
             ${button(`${FRONTEND_URL}/dashboard`, 'Track My Order')}
         `;
@@ -478,12 +521,14 @@ exports.sendOrderConfirmation = async (
                 body
             }),
 
-            attachments: [
-                {
-                    filename: `Invoice-${order.orderId}.pdf`,
-                    path: invoicePath
-                }
-            ]
+            attachments: invoicePath
+                ? [
+                    {
+                        filename: `Invoice-${order.orderId}.pdf`,
+                        path: invoicePath
+                    }
+                ]
+                : []
         };
 
         const result = await sendWithResend(mailOptions);
