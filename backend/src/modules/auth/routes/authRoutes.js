@@ -8,7 +8,7 @@ const upload = require('../../../middleware/upload');
 
 router.post('/login', authController.login);
 router.post('/google-login', authController.login);   // Google OAuth uses same login flow
-router.post('/test-login', authController.testLogin);
+router.post('/admin-login', authController.adminLogin);   // Management portal (ADMIN_EMAIL / ADMIN_PASSWORD)
 router.post('/check-user', authController.checkUser);   // Is this mobile number already registered?
 router.post('/register', authController.register);
 router.post('/send-email-otp', authController.sendEmailOtp);

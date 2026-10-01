@@ -1,84 +1,20 @@
 'use strict';
-const { admin, db } = require('../config/firebase');
+const { admin } = require('../config/firebase');
 
 const IS_DEV = process.env.NODE_ENV !== 'production';
-const ALLOW_TEST_UID = IS_DEV || process.env.ALLOW_TEST_UID === 'true';
 
-// In-memory cache for test-user lookups (1 hour TTL)
-const _testUserCache = new Map();
-const TEST_USER_CACHE_TTL_MS = 60 * 60 * 1000;
-
-// In-memory cache for admin role checks (5 min TTL, promise-coalescing)
-const _adminRoleCache = new Map();
-const ADMIN_ROLE_CACHE_TTL = 5 * 60 * 1000;
-
-async function _resolveTestUser(testUid) {
-    const cached = _testUserCache.get(testUid);
-    if (cached && cached.expiresAt > Date.now()) return cached.userData;
-
-    let snap = await db.collection('users').doc(testUid).get();
-
-    // Fallback: try alternate UID format (with/without country code prefix)
-    // e.g. test_7483743936 <-> test_917483743936
-    if (!snap.exists && testUid.startsWith('test_')) {
-        const digits = testUid.slice(5); // strip "test_"
-        let altUid = null;
-        if (digits.startsWith('91') && digits.length > 10) {
-            altUid = `test_${digits.slice(2)}`; // remove 91 prefix
-        } else if (digits.length === 10) {
-            altUid = `test_91${digits}`; // add 91 prefix
-        }
-        if (altUid) {
-            const altSnap = await db.collection('users').doc(altUid).get();
-            if (altSnap.exists) snap = altSnap;
-        }
-    }
-
-    let userData;
-    if (!snap.exists) {
-        const fbUser = await admin.auth().getUser(testUid).catch(() => null);
-        if (!fbUser) throw Object.assign(new Error('User not found'), { status: 401 });
-        userData = { role: 'CONSUMER', phone: fbUser.phoneNumber || null };
-    } else {
-        userData = snap.data();
-    }
-    _testUserCache.set(testUid, { userData, expiresAt: Date.now() + TEST_USER_CACHE_TTL_MS });
-    return userData;
-}
-
-function _checkIsAdmin(uid) {
-    const entry = _adminRoleCache.get(uid);
-    if (entry && entry.isAdmin !== undefined && entry.expiresAt > Date.now()) {
-        return Promise.resolve(entry.isAdmin);
-    }
-    if (entry && entry.promise) return entry.promise;
-
-    const promise = db.collection('users').doc(uid).get()
-        .then(snap => {
-            const isAdmin = snap.exists && snap.data().role === 'ADMIN';
-            _adminRoleCache.set(uid, { isAdmin, expiresAt: Date.now() + ADMIN_ROLE_CACHE_TTL });
-            return isAdmin;
-        })
-        .catch(err => { _adminRoleCache.delete(uid); throw err; });
-    _adminRoleCache.set(uid, { promise });
-    return promise;
-}
+// The one and only management account. It signs in with ADMIN_EMAIL / ADMIN_PASSWORD
+// from the environment (POST /auth/admin-login) and always uses this uid.
+// Set ADMIN_UID only if you want the admin to keep using an existing admin
+// user's data (profile, settings).
+const ADMIN_UID = process.env.ADMIN_UID || 'goodkart_admin';
 
 /**
- * Verifies Firebase ID token or X-Test-UID header (dev only).
- * Attaches decoded user to req.user.
+ * Verifies the Firebase ID token sent as "Authorization: Bearer <token>".
+ * Attaches the decoded token to req.user.
  */
 const verifyAuth = async (req, res, next) => {
     try {
-        const testUid = req.headers['x-test-uid'];
-        if (ALLOW_TEST_UID && testUid) {
-            console.log(`[verifyAuth] Using Test UID: ${testUid}`);
-            const userData = await _resolveTestUser(testUid);
-            console.log(`[verifyAuth] Resolved Test User to Role: ${userData.role}`);
-            req.user = { uid: testUid, phone_number: userData.phone || null, role: userData.role, isTestMode: true };
-            return next();
-        }
-
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             return res.status(401).json({ success: false, message: 'Authorization header with Bearer token is required' });
@@ -91,6 +27,7 @@ const verifyAuth = async (req, res, next) => {
             return next();
         } catch (err) {
             // DEV fallback: decode JWT payload without signature verify
+            // (never accepted for admin routes - see verifyAdmin)
             if (IS_DEV) {
                 try {
                     const payload = JSON.parse(Buffer.from(idToken.split('.')[1], 'base64url').toString('utf8'));
@@ -106,28 +43,21 @@ const verifyAuth = async (req, res, next) => {
         }
     } catch (error) {
         console.error('[verifyAuth] ERROR:', error.message);
-        if (error.status === 401) return res.status(401).json({ success: false, message: 'User not found' });
         return res.status(401).json({ success: false, message: 'Invalid or expired token' });
     }
 };
 
 /**
- * Verifies that the authenticated user has the ADMIN role.
- * Must be used AFTER verifyAuth.
+ * Allows only the management account (see ADMIN_UID) through.
+ * Must be used AFTER verifyAuth. The token must be a genuinely verified Firebase
+ * token issued by /auth/admin-login, carrying the ADMIN role claim.
  */
-const verifyAdmin = async (req, res, next) => {
-    try {
-        if (req.user.isTestMode) {
-            if (req.user.role === 'ADMIN') return next();
-            return res.status(403).json({ success: false, message: 'Admin access denied' });
-        }
-        const isAdmin = await _checkIsAdmin(req.user.uid);
-        if (isAdmin) return next();
-        return res.status(403).json({ success: false, message: 'Admin access denied' });
-    } catch (err) {
-        console.error('[verifyAdmin] ERROR:', err.message);
-        return res.status(403).json({ success: false, message: 'Admin verification failed' });
+const verifyAdmin = (req, res, next) => {
+    const user = req.user;
+    if (user && !user.isDevFallback && user.uid === ADMIN_UID && user.role === 'ADMIN') {
+        return next();
     }
+    return res.status(403).json({ success: false, message: 'Admin access denied' });
 };
 
-module.exports = { verifyAuth, verifyAdmin };
+module.exports = { verifyAuth, verifyAdmin, ADMIN_UID };

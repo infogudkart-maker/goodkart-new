@@ -1,7 +1,7 @@
 const fs = require('fs');
 const { Resend } = require('resend');
 const { getAdminConfig } = require('./adminConfigService');
-const { db } = require('../../config/firebase');
+const { db, admin } = require('../../config/firebase');
 
 // ============================================================
 // SITE CONFIGURATION (website uses hash routing: /#/path)
@@ -13,6 +13,10 @@ const siteLink = (routePath = '') => `${SITE_URL}/#${routePath}`;
 
 const CUSTOMER_DASHBOARD_URL = siteLink('/dashboard');
 const SELLER_DASHBOARD_URL = siteLink('/seller/dashboard');
+
+// Order tracking page (route: /track?orderId=...)
+const trackOrderUrl = (orderId) =>
+    siteLink(`/track?orderId=${encodeURIComponent(orderId ?? '')}`);
 
 // ============================================================
 // BRAND CONFIGURATION
@@ -39,11 +43,20 @@ if (!RESEND_API_KEY) {
     );
 }
 
-const resend = new Resend(RESEND_API_KEY);
+// Lazily instantiated so the server doesn't crash at startup when the key is missing.
+let _resend = null;
+const getResendClient = () => {
+    if (!_resend) {
+        _resend = new Resend(RESEND_API_KEY);
+    }
+    return _resend;
+};
 
 // All GoodKart emails will be sent from this address.
-// Make sure goodsynk.com is verified in Resend.
-const RESEND_FROM_EMAIL = 'GoodKart <notification@goodsynk.com>';
+// For production: verify goodsynk.com in Resend dashboard (resend.com/domains)
+// For development: using Resend's built-in test sender (no domain verification needed)
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL
+    || 'GoodKart <onboarding@resend.dev>';
 
 // ============================================================
 // SENDER CONFIGURATION
@@ -138,7 +151,30 @@ const sendWithResend = async (mailOptions) => {
         }
     }
 
-    const { data, error } = await resend.emails.send(emailData);
+    // Resend allows only a couple of requests per second. The customer and seller
+    // order emails go out back to back, so retry briefly when we get rate limited
+    // instead of silently losing the second email.
+    let data;
+    let error;
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        ({ data, error } = await getResendClient().emails.send(emailData));
+
+        const rateLimited =
+            error &&
+            (error.statusCode === 429 ||
+                error.name === 'rate_limit_exceeded');
+
+        if (!rateLimited) break;
+
+        console.warn(
+            `⚠️ Resend rate limit hit (attempt ${attempt}/3), retrying...`
+        );
+
+        await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * attempt)
+        );
+    }
 
     if (error) {
         console.error('❌ Resend API Error:', error);
@@ -507,10 +543,10 @@ exports.sendOrderConfirmation = async (
             ${addressHtml}
 
             ${p(invoicePath
-                ? 'Your official invoice is attached to this email. You can also track your order and manage your account from your dashboard.'
-                : 'You can track your order and download your invoice from your dashboard.', 'font-size:14px;')}
+                ? 'Your official invoice is attached to this email. Use the button below to track your order.'
+                : 'Use the button below to track your order. You can download your invoice from your dashboard.', 'font-size:14px;')}
 
-            ${button(CUSTOMER_DASHBOARD_URL, 'Track My Order')}
+            ${button(trackOrderUrl(order.orderId), 'Track Order')}
         `;
 
         const mailOptions = {
@@ -1041,10 +1077,17 @@ exports.notifySellers = async (
         // Group items by sellerId
         const sellerItemsMap = {};
 
+        // Some order payloads only carry the seller on the order itself.
+        // Use it only when no item has a sellerId, so mixed carts are not mis-assigned.
+        const orderLevelSellerId =
+            items.some(i => i && i.sellerId)
+                ? null
+                : orderData.sellerId;
+
         items.forEach(item => {
 
             const sellerId =
-                item.sellerId;
+                item.sellerId || orderLevelSellerId;
 
             if (
                 !sellerId ||
@@ -1078,7 +1121,29 @@ exports.notifySellers = async (
             `[NotifySellers] Notifying ${sellerIds.length} seller(s) for order ${orderData.orderId}`
         );
 
-        // Helper: read email from the users collection
+        const isEmail = (v) =>
+            typeof v === 'string' &&
+            /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+
+        const firstEmail = (...candidates) => {
+            const found = candidates.find(isEmail);
+            return found ? found.trim() : null;
+        };
+
+        // Same set of fields the admin notifications already look at, plus the
+        // nested onboarding fields. Checking only email/contactEmail missed sellers
+        // whose address is stored under another key.
+        const emailFromSellerDoc = (d = {}) =>
+            firstEmail(
+                d.contactEmail,
+                d.businessInfo?.contactEmail,
+                d.emailId,
+                d.email,
+                d.sellerEmail,
+                d.personalInfo?.email
+            );
+
+        // Helper: read email from the users collection, then Firebase Auth
         const getUserEmail = async (uid) => {
             try {
                 const userDoc =
@@ -1094,16 +1159,26 @@ exports.notifySellers = async (
                         ? userDoc.exists()
                         : userDoc.exists;
 
-                return userExists
-                    ? (userDoc.data().email || null)
-                    : null;
+                if (userExists) {
+                    const d = userDoc.data() || {};
+                    const fromUser = firstEmail(d.contactEmail, d.email);
+                    if (fromUser) return fromUser;
+                }
             } catch (err) {
                 console.error(
                     `[NotifySellers] users lookup failed for ${uid}:`,
                     err.message
                 );
-                return null;
             }
+
+            try {
+                const authUser = await admin.auth().getUser(uid);
+                if (isEmail(authUser?.email)) return authUser.email.trim();
+            } catch (err) {
+                // Not a Firebase Auth user - nothing more to try
+            }
+
+            return null;
         };
 
         // Batch fetch seller emails
@@ -1158,8 +1233,7 @@ exports.notifySellers = async (
                     }
 
                     let email =
-                        sellerData.email ||
-                        sellerData.contactEmail;
+                        emailFromSellerDoc(sellerData);
 
                     // If not found, fetch from users
                     if (!email) {

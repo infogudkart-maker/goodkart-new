@@ -34,24 +34,28 @@ const processPostOrderTasks = async (orderData, orderRef) => {
     try {
         console.log(`[Background] Processing post-order tasks for Order ID: ${orderData.orderId}`);
 
-        // 1. Generate Invoice & Send Emails
+        // 1. Generate Invoice (a failure here must never block the emails below)
+        let invoiceUrl = null;
         try {
-            const invoiceUrl = await invoiceService.generateInvoice({ ...orderData, documentId: orderRef.id });
+            invoiceUrl = await invoiceService.generateInvoice({ ...orderData, documentId: orderRef.id });
             await orderRef.update({ invoiceGenerated: true, invoiceUrl: invoiceUrl });
-            
-            if (orderData.email) {
-                emailService.sendOrderConfirmation(orderData.email, { ...orderData, documentId: orderRef.id }, invoiceUrl)
-                    .catch(err => console.error('[Background] Confirmation email error:', err));
-            }
-            
-            // Notify sellers about the new order
-            emailService.notifySellers({ ...orderData, documentId: orderRef.id })
-                .catch(err => console.error('[Background] Seller notification error:', err));
         } catch (invoiceErr) {
-            console.error("[Background] Invoice/Email logic error:", invoiceErr.message);
+            console.error("[Background] Invoice generation error:", invoiceErr.message);
         }
 
-        // 2. Handle Shiprocket Shipment
+        // 2. Send emails - customer confirmation and seller notification are independent
+        if (orderData.email) {
+            emailService.sendOrderConfirmation(orderData.email, { ...orderData, documentId: orderRef.id }, invoiceUrl)
+                .catch(err => console.error('[Background] Confirmation email error:', err));
+        } else {
+            console.warn(`[Background] No customer email on order ${orderData.orderId}`);
+        }
+
+        // Notify sellers about the new order
+        emailService.notifySellers({ ...orderData, documentId: orderRef.id })
+            .catch(err => console.error('[Background] Seller notification error:', err));
+
+        // 3. Handle Shiprocket Shipment
         try {
             const shipmentResult = await shiprocketService.createShipment({ ...orderData, orderId: orderData.orderId });
             if (shipmentResult.success) {
@@ -70,7 +74,7 @@ const processPostOrderTasks = async (orderData, orderRef) => {
             console.error("[Background] Shiprocket logic error:", shiprocketErr.message);
         }
 
-        // 3. Reduce stock atomically
+        // 4. Reduce stock atomically
         if (orderData.items) {
             reduceStock(orderData.items).catch(err => console.error("[Background] Stock reduction error:", err));
         }

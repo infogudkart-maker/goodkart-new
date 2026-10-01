@@ -1,145 +1,43 @@
 'use strict';
+const crypto = require('crypto');
 const { admin, db } = require('../../../config/firebase');
-
-// Test/dev-only bypass that skips real OTP verification. Normally this should
-// be gated by NODE_ENV/ALLOW_TEST_LOGIN so it's off in production by default
-// (see git history) - it's forced to `true` here, in code, because the
-// person deploying this doesn't currently have access to set environment
-// variables on the hosting dashboard (Render), and this line ships via a
-// normal git push instead.
-//
-// SECURITY: while this is `true`, anyone who sends { isTest: true, phone }
-// to /auth/login or /auth/register can log in as ANY phone number without
-// proving they own it - real SMS OTP verification is skipped entirely, in
-// every environment including production. Revert this to the NODE_ENV-based
-// check below (or get dashboard access and use the ALLOW_TEST_LOGIN env var)
-// as soon as real Firebase Phone Auth (SMS delivery) is set up, or sooner.
-//
-// const IS_DEV = process.env.NODE_ENV !== 'production';
-// const ALLOW_TEST_LOGIN = IS_DEV || process.env.ALLOW_TEST_LOGIN === 'true';
-const ALLOW_TEST_LOGIN = true;
+const { ADMIN_UID } = require('../../../middleware/auth');
 
 /**
- * Handles user login (Firebase Token or Test Mode).
+ * Handles user login. Every login must carry a genuine Firebase ID token
+ * (phone OTP, email/password or Google). There are no test/bypass logins.
  */
 const login = async (req, res) => {
     try {
-        const { idToken, isTest, email: testEmail, phone } = req.body;
+        const { idToken } = req.body;
+        if (!idToken) return res.status(400).json({ success: false, message: "ID token is required" });
 
-        let uid;
-        let phoneNumber = null;
-        let email = null;
-        let fullName = null;
-        let decodedToken = null;
-
-        if (isTest && ALLOW_TEST_LOGIN) {
-            uid = phone ? `test_${phone.replace(/[^0-9]/g, '')}` : `test_email_${(testEmail || "user").replace(/[^a-zA-Z0-9]/g, '')}`;
-            email = testEmail || null;
-            fullName = req.body.fullName || testEmail?.split('@')[0] || "Test User";
-            phoneNumber = phone || null;
-
-            // Try to find real user by phone number to support real sellers/admins in test mode
-            if (phone) {
-                const phoneVariants = [phone, phone.replace('+91', ''), phone.startsWith('+91') ? phone : `+91${phone.replace(/[^0-9]/g, '')}`];
-                for (const variant of phoneVariants) {
-                    const snap = await db.collection('users').where('phone', '==', variant).limit(1).get();
-                    if (!snap.empty) {
-                        uid = snap.docs[0].id;
-                        const d = snap.docs[0].data();
-                        fullName = d.fullName || fullName;
-                        email = d.email || email;
-                        break;
-                    }
-                }
-            }
-        } else {
-            if (!idToken) return res.status(400).json({ success: false, message: "ID token is required" });
-            decodedToken = await admin.auth().verifyIdToken(idToken);
-            uid = decodedToken.uid;
-            phoneNumber = decodedToken.phone_number || null;
-            email = decodedToken.email || null;
-            fullName = decodedToken.name || null;
-        }
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        const uid = decodedToken.uid;
+        const phoneNumber = decodedToken.phone_number || null;
+        const email = decodedToken.email || null;
+        const fullName = decodedToken.name || null;
 
         const userRef = db.collection("users").doc(uid);
         const userSnap = await userRef.get();
 
         if (!userSnap.exists) {
-            // Define test seller phone numbers
-            const TEST_SELLER_PHONES = ['+919353469036', '+916366151635', '+919480290587'];
-            const isTestSeller = phoneNumber && TEST_SELLER_PHONES.includes(phoneNumber);
+            const isGoogle = decodedToken.firebase && decodedToken.firebase.sign_in_provider === 'google.com';
 
-            // If they are logging in from Google but don't exist yet, we automatically create them
-            // This skips the "complete profile" step on the frontend
-            if (decodedToken && decodedToken.firebase && decodedToken.firebase.sign_in_provider === 'google.com') {
-                await userRef.set({
-                    uid,
-                    phone: phoneNumber,
-                    email,
-                    fullName: fullName || "User",
-                    role: isTestSeller ? "SELLER" : "CONSUMER",
-                    isActive: true,
-                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                });
-
-                // If test seller, also create seller document
-                if (isTestSeller) {
-                    await db.collection("sellers").doc(uid).set({
-                        uid,
-                        shopName: "Test Seller Shop",
-                        sellerStatus: "APPROVED",
-                        isBlocked: false,
-                        category: "General",
-                        address: "Test Address",
-                        appliedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    });
-
-                    return res.status(200).json({
-                        success: true, uid, role: "SELLER", fullName: fullName || "Test Seller",
-                        status: "APPROVED", sellerStatus: "APPROVED", shopName: "Test Seller Shop",
-                        message: "Test seller created via Google",
-                    });
-                }
-
-                return res.status(200).json({
-                    success: true, uid, role: "CONSUMER", fullName: fullName || "User", status: "NEW_USER",
-                    message: "New user created via Google",
-                });
-            }
-
-            // Fallback for standard ID token automatic creation (e.g. standard email/password link if we were doing that)
+            // First login: create the account automatically as a CONSUMER
             await userRef.set({
                 uid,
                 phone: phoneNumber,
                 email,
-                fullName,
-                role: isTestSeller ? "SELLER" : "CONSUMER",
+                fullName: isGoogle ? (fullName || "User") : fullName,
+                role: "CONSUMER",
                 isActive: true,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            // If test seller, also create seller document
-            if (isTestSeller) {
-                await db.collection("sellers").doc(uid).set({
-                    uid,
-                    shopName: "Test Seller Shop",
-                    sellerStatus: "APPROVED",
-                    isBlocked: false,
-                    category: "General",
-                    address: "Test Address",
-                    appliedAt: admin.firestore.FieldValue.serverTimestamp(),
-                });
-
-                return res.status(200).json({
-                    success: true, uid, role: "SELLER", fullName: fullName || "Test Seller",
-                    status: "APPROVED", sellerStatus: "APPROVED", shopName: "Test Seller Shop",
-                    message: "Test seller created",
-                });
-            }
-
             return res.status(200).json({
-                success: true, uid, role: "CONSUMER", fullName, status: "NEW_USER",
-                message: "New user created as CONSUMER",
+                success: true, uid, role: "CONSUMER", fullName: isGoogle ? (fullName || "User") : fullName, status: "NEW_USER",
+                message: isGoogle ? "New user created via Google" : "New user created as CONSUMER",
             });
         }
 
@@ -148,50 +46,8 @@ const login = async (req, res) => {
             return res.status(403).json({ success: false, role: userData.role, message: "Account is disabled. Contact support." });
         }
 
-        const ADMIN_PHONE = "+917483743936";
-        if (userData.role === "ADMIN" || phoneNumber === ADMIN_PHONE) {
-            if (phoneNumber === ADMIN_PHONE) {
-                if (userData.role !== "ADMIN") try { await userRef.update({ role: "ADMIN" }); } catch (e) { }
-                return res.status(200).json({
-                    success: true, uid, role: "ADMIN", status: "AUTHORIZED",
-                    phone: phoneNumber, fullName: userData.fullName || "Admin User",
-                    message: "Admin login successful"
-                });
-            }
-        }
-
-        // Check if this is a test seller phone number and upgrade to seller if needed
-        const TEST_SELLER_PHONES = ['+919353469036', '+916366151635', '+919480290587'];
-        const isTestSeller = phoneNumber && TEST_SELLER_PHONES.includes(phoneNumber);
-
-        if (isTestSeller && userData.role !== "SELLER") {
-            // Upgrade user to seller role
-            try { await userRef.update({ role: "SELLER" }); } catch (e) { console.error("Failed to update role:", e); }
-        }
-
+        // Management access is only available through /auth/admin-login.
         const sellerSnap = await db.collection("sellers").doc(uid).get();
-
-        // If test seller but no seller document exists, create it
-        if (isTestSeller && !sellerSnap.exists) {
-            await db.collection("sellers").doc(uid).set({
-                uid,
-                shopName: "Test Seller Shop",
-                sellerStatus: "APPROVED",
-                isBlocked: false,
-                category: "General",
-                address: "Test Address",
-                fullName: userData.fullName || "Test Seller",
-                appliedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            return res.status(200).json({
-                success: true, uid, role: "SELLER",
-                status: "APPROVED", sellerStatus: "APPROVED",
-                shopName: "Test Seller Shop",
-                fullName: userData.fullName || "Test Seller",
-                message: "Test seller upgraded and approved"
-            });
-        }
 
         if (sellerSnap.exists) {
             const sellerData = sellerSnap.data();
@@ -289,18 +145,12 @@ const sendEmailOtp = async (req, res) => {
  */
 const register = async (req, res) => {
     try {
-        const { idToken, phone, fullName, dob, email, password, isTest } = req.body;
-        let uid;
-        let phoneNumber = phone;
+        const { idToken, phone, fullName, dob, email, password } = req.body;
 
-        if (isTest && ALLOW_TEST_LOGIN) {
-            uid = phone ? `test_${phone.replace(/[^0-9]/g, '')}` : `test_email_${Date.now()}`;
-        } else {
-            if (!idToken) return res.status(400).json({ success: false, message: "ID token is required" });
-            const decodedToken = await admin.auth().verifyIdToken(idToken);
-            uid = decodedToken.uid;
-            phoneNumber = decodedToken.phone_number || phone;
-        }
+        if (!idToken) return res.status(400).json({ success: false, message: "ID token is required" });
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        const uid = decodedToken.uid;
+        const phoneNumber = decodedToken.phone_number || phone;
 
         const userRef = db.collection("users").doc(uid);
         const userSnap = await userRef.get();
@@ -503,212 +353,56 @@ const uploadImage = async (req, res) => {
 };
 
 /**
- * Handles test login with phone and OTP.
+ * Management login. The ONLY way into the admin portal: the email and password
+ * must match ADMIN_EMAIL / ADMIN_PASSWORD from the server environment.
+ * On success a Firebase custom token is returned; the browser signs in with it and
+ * from then on every admin request carries a normal, verified Firebase ID token.
  */
-const testLogin = async (req, res) => {
+const safeEqual = (a, b) => {
+    const ha = crypto.createHash('sha256').update(String(a)).digest();
+    const hb = crypto.createHash('sha256').update(String(b)).digest();
+    return crypto.timingSafeEqual(ha, hb);
+};
+
+const adminLogin = async (req, res) => {
     try {
-        if (!ALLOW_TEST_LOGIN) {
-            return res.status(403).json({ success: false, message: "Test login is disabled in this environment" });
+        const adminEmail = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+        const adminPassword = String(process.env.ADMIN_PASSWORD || '');
+
+        if (!adminEmail || !adminPassword) {
+            console.error('[AdminLogin] ADMIN_EMAIL / ADMIN_PASSWORD are not set in the environment.');
+            return res.status(503).json({ success: false, message: "Admin login is not configured." });
         }
 
-        const { phone, otp } = req.body;
+        const { email, password } = req.body || {};
+        const emailOk = safeEqual(String(email || '').trim().toLowerCase(), adminEmail);
+        const passwordOk = safeEqual(String(password || ''), adminPassword);
 
-        if (!phone) {
-            return res.status(400).json({ success: false, message: "Phone number is required" });
+        if (!emailOk || !passwordOk) {
+            // Slow down guessing
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return res.status(401).json({ success: false, message: "Invalid admin credentials." });
         }
 
-        // For test mode, accept any 6-digit OTP
-        if (!otp || otp.length !== 6) {
-            return res.status(400).json({ success: false, message: "Invalid OTP" });
-        }
+        await db.collection("users").doc(ADMIN_UID).set({
+            uid: ADMIN_UID,
+            email: adminEmail,
+            role: "ADMIN",
+            isActive: true,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
 
-        const uid = `test_${phone.replace(/[^0-9]/g, '')}`;
-        const userRef = db.collection("users").doc(uid);
-        const userSnap = await userRef.get();
-
-        if (!userSnap.exists) {
-            // Determine role based on phone number
-            const ADMIN_PHONE = "+917483743936";
-            const TEST_SELLER_PHONES = ['+919353469036', '+916366151635', '+919480290587'];
-            const isTestSeller = TEST_SELLER_PHONES.includes(phone);
-            const initialRole = phone === ADMIN_PHONE ? "ADMIN" : (isTestSeller ? "SELLER" : "CONSUMER");
-
-            // Create new test user
-            await userRef.set({
-                uid,
-                phone,
-                fullName: phone === ADMIN_PHONE ? "Admin User" : (isTestSeller ? "Test Seller" : `User ${phone.slice(-4)}`),
-                role: initialRole,
-                isActive: true,
-                isTest: true,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            // If test seller, also create seller document
-            if (isTestSeller) {
-                await db.collection("sellers").doc(uid).set({
-                    uid,
-                    shopName: "Test Seller Shop",
-                    sellerStatus: "APPROVED",
-                    isBlocked: false,
-                    category: "General",
-                    address: "Test Address",
-                    appliedAt: admin.firestore.FieldValue.serverTimestamp(),
-                });
-
-                return res.status(200).json({
-                    success: true,
-                    uid,
-                    role: "SELLER",
-                    fullName: "Test Seller",
-                    status: "APPROVED",
-                    sellerStatus: "APPROVED",
-                    shopName: "Test Seller Shop",
-                    message: "Test seller login successful",
-                });
-            }
-
-            return res.status(200).json({
-                success: true,
-                uid,
-                role: initialRole,
-                fullName: phone === ADMIN_PHONE ? "Admin User" : `User ${phone.slice(-4)}`,
-                status: initialRole === "ADMIN" ? "AUTHORIZED" : "NEW_USER",
-                message: initialRole === "ADMIN" ? "Admin login successful" : "New test user created as CONSUMER",
-            });
-        }
-
-        const userData = userSnap.data();
-        if (userData.isActive === false) {
-            return res.status(403).json({
-                success: false,
-                role: userData.role,
-                message: "Account is disabled. Contact support."
-            });
-        }
-
-        // Check for admin phone number (same as login handler)
-        const ADMIN_PHONE = "+917483743936";
-        if (userData.role === "ADMIN" || phone === ADMIN_PHONE) {
-            if (phone === ADMIN_PHONE && userData.role !== "ADMIN") {
-                try { await userRef.update({ role: "ADMIN" }); } catch (_) { }
-            }
-            return res.status(200).json({
-                success: true,
-                uid,
-                role: "ADMIN",
-                status: "AUTHORIZED",
-                phone: phone,
-                fullName: userData.fullName || "Admin User",
-                message: "Admin login successful"
-            });
-        }
-
-        // Check if this is a test seller phone number and upgrade to seller if needed
-        const TEST_SELLER_PHONES = ['+919353469036', '+916366151635', '+919480290587'];
-        const isTestSeller = TEST_SELLER_PHONES.includes(phone);
-
-        if (isTestSeller && userData.role !== "SELLER") {
-            // Upgrade user to seller role
-            try { await userRef.update({ role: "SELLER" }); } catch (e) { console.error("Failed to update role:", e); }
-        }
-
-        // Check if user is a seller
-        const sellerSnap = await db.collection("sellers").doc(uid).get();
-
-        // If test seller but no seller document exists, create it
-        if (isTestSeller && !sellerSnap.exists) {
-            await db.collection("sellers").doc(uid).set({
-                uid,
-                shopName: "Test Seller Shop",
-                sellerStatus: "APPROVED",
-                isBlocked: false,
-                category: "General",
-                address: "Test Address",
-                fullName: userData.fullName || "Test Seller",
-                appliedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            return res.status(200).json({
-                success: true,
-                uid,
-                role: "SELLER",
-                status: "APPROVED",
-                sellerStatus: "APPROVED",
-                shopName: "Test Seller Shop",
-                fullName: userData.fullName || "Test Seller",
-                message: "Test seller upgraded and approved"
-            });
-        }
-
-        if (sellerSnap.exists) {
-            const sellerData = sellerSnap.data();
-            const sellerStatus = sellerData.sellerStatus || "PENDING";
-
-            if (userData.role !== "SELLER") {
-                try { await userRef.update({ role: "SELLER" }); } catch (_) { }
-            }
-
-            if (sellerStatus === "APPROVED") {
-                return res.status(200).json({
-                    success: true,
-                    uid,
-                    role: "SELLER",
-                    status: "APPROVED",
-                    sellerStatus: "APPROVED",
-                    shopName: sellerData.shopName,
-                    message: "Seller login successful"
-                });
-            }
-            if (sellerStatus === "REJECTED") {
-                return res.status(200).json({
-                    success: true,
-                    uid,
-                    role: "SELLER",
-                    status: "REJECTED",
-                    sellerStatus: "REJECTED",
-                    message: "Your seller application was rejected. You can reapply with updated information.",
-                    canReapply: true
-                });
-            }
-            if (sellerData.isBlocked === true) {
-                return res.status(200).json({
-                    success: true,
-                    uid,
-                    role: "SELLER",
-                    status: "BLOCKED",
-                    sellerStatus: "BLOCKED",
-                    message: "Your seller account is blocked. Contact admin for more information.",
-                    canReapply: false
-                });
-            }
-            return res.status(200).json({
-                success: true,
-                uid,
-                role: "SELLER",
-                status: "PENDING",
-                sellerStatus: "PENDING",
-                shopName: sellerData.shopName,
-                message: "Seller approval pending"
-            });
-        }
+        const customToken = await admin.auth().createCustomToken(ADMIN_UID, { role: "ADMIN" });
 
         return res.status(200).json({
-            success: true,
-            uid,
-            role: userData.role || "CONSUMER",
-            status: "AUTHORIZED",
-            fullName: userData.fullName,
-            message: "Login successful"
+            success: true, uid: ADMIN_UID, role: "ADMIN", status: "AUTHORIZED",
+            email: adminEmail, fullName: "Admin", customToken,
+            message: "Admin login successful",
         });
-
     } catch (error) {
-        console.error("TEST LOGIN ERROR:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Test login failed: " + error.message
-        });
+        console.error("ADMIN LOGIN ERROR:", error);
+        return res.status(500).json({ success: false, message: "Admin login failed on the server." });
     }
 };
 
-module.exports = { login, register, applySeller, extractAadhar, uploadImage, testLogin, sendEmailOtp, checkSellerStatus, checkUser };
+module.exports = { login, register, applySeller, extractAadhar, uploadImage, sendEmailOtp, checkSellerStatus, checkUser, adminLogin };
