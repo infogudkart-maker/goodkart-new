@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Phone, ShieldCheck, User as UserIcon, Mail } from 'lucide-react';
 import { auth } from '@/modules/shared/config/firebase';
-import { RecaptchaVerifier, signInWithPhoneNumber, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import { authFetch, API_BASE } from '@/modules/shared/utils/api';
 import PhoneOtpForm from './PhoneOtpForm';
@@ -65,7 +65,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
     const [error, setError] = useState('');
     const [emailOtpStep, setEmailOtpStep] = useState('details'); // 'details' | 'otp'
     const [emailOtp, setEmailOtp] = useState('');
-    const [confirmationResult, setConfirmationResult] = useState(null);
     const [formData, setFormData] = useState({ fullName: '', dob: '', email: '', password: '', confirmPassword: '' });
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -183,27 +182,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         return true;
     };
 
-    const cleanupRecaptcha = () => {
-        if (window.recaptchaVerifier) {
-            try { window.recaptchaVerifier.clear(); } catch (_) { }
-            window.recaptchaVerifier = null;
-        }
-        const container = document.getElementById('recaptcha-container');
-        if (container) container.innerHTML = '';
-    };
-
     const handleClose = () => {
         setStep('phone'); setPhone(''); setOtp(''); setGeneratedOtp(''); setError('');
         setNotice(null); setJustRegistered(false);
-        setConfirmationResult(null); setIsRegistering(false);
+        setIsRegistering(false);
         setIsEmailSignup(false); setIsEmailLogin(false);
         setEmailOtpStep('details'); setEmailOtp('');
         setFormData({ fullName: '', dob: '', email: '', password: '', confirmPassword: '' });
-        cleanupRecaptcha();
         onClose();
     };
 
-    useEffect(() => { return () => cleanupRecaptcha(); }, []);
     useEffect(() => { setError(''); }, [isRegistering, isEmailLogin, isEmailSignup]);
     useEffect(() => {
         if (!isOpen) handleClose();
@@ -224,48 +212,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         };
     }, [isOpen]);
 
-    const setupRecaptcha = () => {
-        cleanupRecaptcha();
-        const container = document.getElementById('recaptcha-container');
-        if (!container) return;
-        try {
-            // An invisible RecaptchaVerifier renders straight into the element it is given, and
-            // grecaptcha refuses to render into an element it has already used ("reCAPTCHA has
-            // already been rendered in this element") - verifier.clear() does not release it.
-            // So every verifier gets its own brand-new element instead of re-using the container.
-            const slot = document.createElement('div');
-            container.appendChild(slot);
-            window.recaptchaVerifier = new RecaptchaVerifier(auth, slot, {
-                size: 'invisible',
-                callback: () => { },
-                'expired-callback': () => cleanupRecaptcha(),
-            });
-        } catch (e) { console.error('Recaptcha error:', e); cleanupRecaptcha(); }
-    };
+    // Which side of the site this login is for. The same account can be a customer and a seller.
+    const loginAs = (sellerLogin || startSellingFlow) ? 'SELLER' : 'CONSUMER';
 
-    // Sends a genuine OTP via Firebase Phone Auth for a number that is registered.
-    const sendOtpNow = async (phoneNumber) => {
-        setLoading(true);
-        try {
-            setupRecaptcha();
-            const appVerifier = window.recaptchaVerifier;
-            if (!appVerifier) throw new Error('Failed to initialize verification. Please refresh and try again.');
-            const result = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
-            setConfirmationResult(result);
-            setGeneratedOtp('');
-            setStep('otp');
-        } catch (err) {
-            console.error('Failed to send OTP:', err);
-            const msgs = {
-                'auth/too-many-requests': 'Too many attempts. Please try again later.',
-                'auth/invalid-phone-number': 'Please enter a valid 10-digit phone number.',
-                'auth/network-request-failed': 'Network error. Check your connection.',
-            };
-            setError(msgs[err.code] || 'Failed to send OTP. Please try again.');
-            cleanupRecaptcha();
-        } finally {
-            setLoading(false);
-        }
+    // Generates a random 6-digit OTP and shows it on screen (no SMS is sent).
+    const sendOtpNow = async () => {
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        setOtp('');
+        setGeneratedOtp(code);
+        setStep('otp');
     };
 
     const handleSendOTP = async (e) => {
@@ -326,25 +281,20 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         }
 
         // 4. Registered number: send the OTP
-        await sendOtpNow(phoneNumber);
+        await sendOtpNow();
     };
 
     const handleVerifyOrRegister = async (e) => {
         e.preventDefault();
         if (otp.length !== 6) { setError('Please enter a valid 6-digit OTP'); return; }
+        if (otp !== generatedOtp) { setError('Incorrect OTP. Please enter the code shown above.'); return; }
 
         setLoading(true); setError('');
         try {
             const phoneNumber = `+91${phone}`;
-            const result = await confirmationResult.confirm(otp);
-            const idToken = await result.user.getIdToken();
-            const endpoint = isRegistering ? '/auth/register' : '/auth/login';
-            const payload = isRegistering
-                ? { idToken, phone: phoneNumber, email: formData.email, password: formData.password }
-                : { idToken };
-            const response = await authFetch(endpoint, {
+            const response = await authFetch('/auth/login', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...payload, fullName: formData.fullName, dob: formData.dob }),
+                body: JSON.stringify({ phone: phoneNumber, mockPhoneOtp: true, loginAs }),
             });
 
             if (!response.ok) {
@@ -352,13 +302,22 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
             }
 
             const data = await response.json();
+            if (data.success && data.requiresRegistration) {
+                setNotice({ type: 'info', text: "You're a new user - please register first. Your number is already filled in below." });
+                setIsRegistering(true);
+                setStep('phone'); setOtp(''); setGeneratedOtp('');
+                setLoading(false);
+                return;
+            }
+            // Give the browser a real Firebase session so protected API calls are authenticated
+            if (data.success && data.customToken) {
+                try { await signInWithCustomToken(auth, data.customToken); } catch (e) { console.warn('Firebase session sign-in failed:', e.message); }
+            }
             if (data.success) {
-                if (!isRegistering) {
-                    const allowed = await checkRoleAllowed(data);
-                    if (!allowed) {
-                        setLoading(false);
-                        return;
-                    }
+                const allowed = await checkRoleAllowed(data);
+                if (!allowed) {
+                    setLoading(false);
+                    return;
                 }
                 const isSellerSession = sellerLogin || startSellingFlow;
                 sessionStorage.setItem('loginContext', isSellerSession ? 'SELLER' : 'CONSUMER');
@@ -391,11 +350,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                 }
 
                 // Normal flow - no pending Buy Now
-                if (isRegistering && !startSellingFlow) {
-                    navigate('/');
-                } else {
-                    redirectByRole(data, navigate, isSellerSession);
-                }
+                redirectByRole(data, navigate, isSellerSession);
 
                 if (onSuccess) onSuccess(data);
                 handleClose();
@@ -414,7 +369,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
         try {
             const result = await signInWithPopup(auth, new GoogleAuthProvider());
             const idToken = await result.user.getIdToken();
-            const response = await authFetch('/auth/google-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) });
+            const response = await authFetch('/auth/google-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken, loginAs }) });
 
             if (!response.ok) {
                 throw new Error(await serverErrorMessage(response));
@@ -490,7 +445,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                     idToken = await reg.user.getIdToken();
                 } else throw loginErr;
             }
-            const response = await authFetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken, email: formData.email }) });
+            const response = await authFetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken, email: formData.email, loginAs }) });
 
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}`);
@@ -612,7 +567,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, hideRegister, se
                 setJustRegistered(true);
                 setIsRegistering(false);
                 setNotice({ type: 'success', text: 'Registration successful! Enter the OTP below to log in.' });
-                await sendOtpNow(`+91${phone}`);
+                await sendOtpNow();
                 return;
             }
             if (data.success) {

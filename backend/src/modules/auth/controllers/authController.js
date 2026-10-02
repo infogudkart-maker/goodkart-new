@@ -3,27 +3,55 @@ const crypto = require('crypto');
 const { admin, db } = require('../../../config/firebase');
 const { ADMIN_UID } = require('../../../middleware/auth');
 
+// Phone login uses an on-screen OTP (generated in the browser, no SMS). Set MOCK_PHONE_OTP=false
+// in the backend environment to switch this phone-only login off again.
+const MOCK_PHONE_OTP_ENABLED = String(process.env.MOCK_PHONE_OTP || 'true').toLowerCase() !== 'false';
+
 /**
- * Handles user login. Every login must carry a genuine Firebase ID token
- * (phone OTP, email/password or Google). There are no test/bypass logins.
+ * Handles user login (email/password, Google, or phone with the on-screen OTP).
+ *
+ * `loginAs` ('CONSUMER' default | 'SELLER') says which side of the site the person is logging in
+ * to. One account (same email / phone / uid) can be both a customer and a seller, so the role
+ * returned is decided by that side - a seller is never forced into the seller role on the
+ * customer side, and the stored user role is never rewritten here.
  */
 const login = async (req, res) => {
     try {
-        const { idToken } = req.body;
-        if (!idToken) return res.status(400).json({ success: false, message: "ID token is required" });
+        const { idToken, phone, mockPhoneOtp } = req.body;
+        const loginAs = String(req.body.loginAs || 'CONSUMER').toUpperCase() === 'SELLER' ? 'SELLER' : 'CONSUMER';
 
-        const decodedToken = await admin.auth().verifyIdToken(idToken);
-        const uid = decodedToken.uid;
-        const phoneNumber = decodedToken.phone_number || null;
-        const email = decodedToken.email || null;
-        const fullName = decodedToken.name || null;
+        let uid, phoneNumber = null, email = null, fullName = null, isGoogle = false, customToken = null;
+
+        if (idToken) {
+            const decodedToken = await admin.auth().verifyIdToken(idToken);
+            uid = decodedToken.uid;
+            phoneNumber = decodedToken.phone_number || null;
+            email = decodedToken.email || null;
+            fullName = decodedToken.name || null;
+            isGoogle = !!(decodedToken.firebase && decodedToken.firebase.sign_in_provider === 'google.com');
+        } else if (mockPhoneOtp === true && MOCK_PHONE_OTP_ENABLED && phone) {
+            // Phone + on-screen OTP login: the number must already belong to a registered user.
+            const digits = String(phone).replace(/\D/g, '').slice(-10);
+            if (digits.length !== 10) return res.status(400).json({ success: false, message: "A valid 10-digit mobile number is required" });
+            const variants = [`+91${digits}`, digits, `91${digits}`];
+            const phoneSnap = await db.collection("users").where("phone", "in", variants).limit(1).get();
+            if (phoneSnap.empty) {
+                return res.status(200).json({ success: true, requiresRegistration: true, role: "CONSUMER", status: "NEW_USER", message: "No account found for this number. Please register first." });
+            }
+            uid = phoneSnap.docs[0].id;
+            phoneNumber = `+91${digits}`;
+            // Gives the browser a real Firebase session so protected API calls keep working.
+            try { customToken = await admin.auth().createCustomToken(uid); } catch (e) { console.warn('[Login] Could not create custom token:', e.message); }
+        } else {
+            return res.status(400).json({ success: false, message: "ID token is required" });
+        }
+
+        const reply = (body) => res.status(200).json(customToken ? { ...body, customToken } : body);
 
         const userRef = db.collection("users").doc(uid);
         const userSnap = await userRef.get();
 
         if (!userSnap.exists) {
-            const isGoogle = decodedToken.firebase && decodedToken.firebase.sign_in_provider === 'google.com';
-
             // First login: create the account automatically as a CONSUMER
             await userRef.set({
                 uid,
@@ -35,7 +63,7 @@ const login = async (req, res) => {
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            return res.status(200).json({
+            return reply({
                 success: true, uid, role: "CONSUMER", fullName: isGoogle ? (fullName || "User") : fullName, status: "NEW_USER",
                 message: isGoogle ? "New user created via Google" : "New user created as CONSUMER",
             });
@@ -46,21 +74,24 @@ const login = async (req, res) => {
             return res.status(403).json({ success: false, role: userData.role, message: "Account is disabled. Contact support." });
         }
 
-        // Management access is only available through /auth/admin-login.
-        const sellerSnap = await db.collection("sellers").doc(uid).get();
+        // Seller details are only returned when logging in from the seller side. On the customer
+        // side the same account simply logs in as a customer.
+        if (loginAs === 'SELLER') {
+            const sellerSnap = await db.collection("sellers").doc(uid).get();
 
-        if (sellerSnap.exists) {
-            const sellerData = sellerSnap.data();
-            const sellerStatus = sellerData.sellerStatus || "PENDING";
-            if (userData.role !== "SELLER") try { await userRef.update({ role: "SELLER" }); } catch (_) { }
+            if (sellerSnap.exists) {
+                const sellerData = sellerSnap.data();
+                const sellerStatus = sellerData.sellerStatus || "PENDING";
+                const fn = userData.fullName || fullName;
 
-            if (sellerStatus === "APPROVED") return res.status(200).json({ success: true, uid, role: "SELLER", status: "APPROVED", sellerStatus: "APPROVED", shopName: sellerData.shopName, message: "Seller login successful" });
-            if (sellerStatus === "REJECTED") return res.status(200).json({ success: true, uid, role: "SELLER", status: "REJECTED", sellerStatus: "REJECTED", message: "Your seller application was rejected. You can reapply with updated information.", canReapply: true });
-            if (sellerData.isBlocked === true) return res.status(200).json({ success: true, uid, role: "SELLER", status: "BLOCKED", sellerStatus: "BLOCKED", message: "Your seller account is blocked. Contact admin for more information.", canReapply: false });
-            return res.status(200).json({ success: true, uid, role: "SELLER", status: "PENDING", sellerStatus: "PENDING", shopName: sellerData.shopName, message: "Seller approval pending" });
+                if (sellerStatus === "APPROVED") return reply({ success: true, uid, role: "SELLER", fullName: fn, status: "APPROVED", sellerStatus: "APPROVED", shopName: sellerData.shopName, message: "Seller login successful" });
+                if (sellerStatus === "REJECTED") return reply({ success: true, uid, role: "SELLER", fullName: fn, status: "REJECTED", sellerStatus: "REJECTED", message: "Your seller application was rejected. You can reapply with updated information.", canReapply: true });
+                if (sellerData.isBlocked === true) return reply({ success: true, uid, role: "SELLER", fullName: fn, status: "BLOCKED", sellerStatus: "BLOCKED", message: "Your seller account is blocked. Contact admin for more information.", canReapply: false });
+                return reply({ success: true, uid, role: "SELLER", fullName: fn, status: "PENDING", sellerStatus: "PENDING", shopName: sellerData.shopName, message: "Seller approval pending" });
+            }
         }
 
-        return res.status(200).json({ success: true, uid, role: "CONSUMER", status: "AUTHORIZED", fullName: userData.fullName || fullName, message: "Consumer login successful" });
+        return reply({ success: true, uid, role: "CONSUMER", status: "AUTHORIZED", fullName: userData.fullName || fullName, email: userData.email || email, message: "Consumer login successful" });
 
     } catch (error) {
         console.error("AUTH ERROR:", error);
@@ -202,7 +233,7 @@ const applySeller = async (req, res) => {
         const sellerRef = db.collection("sellers").doc(uid);
         const sellerSnap = await sellerRef.get();
 
-        if (userData.role === "SELLER" && sellerSnap.exists) {
+        if (sellerSnap.exists) {
             const existingSellerData = sellerSnap.data();
             // Only block if they are an APPROVED or PENDING seller
             if (existingSellerData.sellerStatus === "APPROVED" || existingSellerData.sellerStatus === "PENDING") {
@@ -225,9 +256,8 @@ const applySeller = async (req, res) => {
                     blockReason: admin.firestore.FieldValue.delete()
                 });
 
-                // Ensure user is active and has SELLER role
+                // The same account stays a customer too - only make sure it is active
                 await userRef.update({
-                    role: "SELLER",
                     isActive: true,
                     updatedAt: admin.firestore.FieldValue.serverTimestamp()
                 });
@@ -239,12 +269,6 @@ const applySeller = async (req, res) => {
                     status: "PENDING"
                 });
             }
-        }
-
-        // If role says SELLER but no seller doc exists, reset the role so they can re-apply
-        if (userData.role === "SELLER" && !sellerSnap.exists) {
-            console.log(`[ApplySeller] Seller doc missing despite SELLER role. Resetting role to CONSUMER to allow re-application.`);
-            await userRef.update({ role: "CONSUMER" });
         }
 
         // Scrub undefined values to prevent Firestore errors
@@ -259,7 +283,8 @@ const applySeller = async (req, res) => {
             appliedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        await userRef.update({ role: "SELLER", updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        // Keep the account's customer role as it is: a seller can also shop with the same account.
+        await userRef.update({ updatedAt: admin.firestore.FieldValue.serverTimestamp() });
 
         return res.status(200).json({ success: true, uid, message: "Applied successfully", status: "PENDING" });
     } catch (error) {
