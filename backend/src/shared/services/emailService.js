@@ -8,13 +8,9 @@ const { db, admin } = require('../../config/firebase');
 // ============================================================
 
 const SITE_URL = 'https://www.goodkart.in';
-
 const siteLink = (routePath = '') => `${SITE_URL}/#${routePath}`;
-
 const CUSTOMER_DASHBOARD_URL = siteLink('/dashboard');
 const SELLER_DASHBOARD_URL = siteLink('/seller/dashboard');
-
-// Order tracking page (route: /track?orderId=...)
 const trackOrderUrl = (orderId) =>
     siteLink(`/track?orderId=${encodeURIComponent(orderId ?? '')}`);
 
@@ -43,32 +39,27 @@ if (!RESEND_API_KEY) {
     );
 }
 
-// Lazily instantiated so the server doesn't crash at startup when the key is missing.
 let _resend = null;
 const getResendClient = () => {
-    if (!_resend) {
-        _resend = new Resend(RESEND_API_KEY);
-    }
+    if (!_resend) _resend = new Resend(RESEND_API_KEY);
     return _resend;
 };
 
-// All GoodKart emails will be sent from this address.
-// For production: verify goodsynk.com in Resend dashboard (resend.com/domains)
-// For development: using Resend's built-in test sender (no domain verification needed)
-const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL
-    || 'GoodKart <onboarding@resend.dev>';
+// ✅ All GoodKart emails are now sent from the verified GoodSynk domain.
+const RESEND_FROM_EMAIL =
+    process.env.RESEND_FROM_EMAIL || `${BRAND_NAME} <notification@goodsynk.com>`;
 
 // ============================================================
 // SENDER CONFIGURATION
 // ============================================================
 
 const getSenderConfig = async () => {
-    const adminConfig = await getAdminConfig();
-
-    return {
-        from: RESEND_FROM_EMAIL,
-        replyTo: adminConfig.email
-    };
+    try {
+        const adminConfig = await getAdminConfig();
+        return { from: RESEND_FROM_EMAIL, replyTo: adminConfig.email };
+    } catch {
+        return { from: RESEND_FROM_EMAIL, replyTo: SUPPORT_EMAIL };
+    }
 };
 
 // ============================================================
@@ -77,130 +68,75 @@ const getSenderConfig = async () => {
 
 const sendWithResend = async (mailOptions) => {
     if (!RESEND_API_KEY) {
-        throw new Error(
-            'RESEND_API_KEY is missing from environment variables.'
-        );
+        throw new Error('RESEND_API_KEY is missing from environment variables.');
     }
 
     const emailData = {
         from: mailOptions.from || RESEND_FROM_EMAIL,
-
-        to: Array.isArray(mailOptions.to)
-            ? mailOptions.to
-            : [mailOptions.to],
-
+        to: Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to],
         subject: mailOptions.subject,
-
         html: mailOptions.html
     };
 
-    // Reply-To
-    if (mailOptions.replyTo) {
-        emailData.replyTo = mailOptions.replyTo;
-    }
+    if (mailOptions.replyTo) emailData.replyTo = mailOptions.replyTo;
 
     // Attachments
-    if (
-        mailOptions.attachments &&
-        Array.isArray(mailOptions.attachments) &&
-        mailOptions.attachments.length > 0
-    ) {
-        const processedAttachments = [];
-
-        for (const attachment of mailOptions.attachments) {
+    if (Array.isArray(mailOptions.attachments) && mailOptions.attachments.length) {
+        const processed = [];
+        for (const att of mailOptions.attachments) {
             try {
-                if (attachment.content) {
-                    // Already a Buffer / base64 string
-                    processedAttachments.push({
-                        filename: attachment.filename,
-                        content: attachment.content
-                    });
-                } else if (
-                    attachment.path &&
-                    /^https?:\/\//i.test(attachment.path)
-                ) {
-                    // Public URL - Resend can fetch it
-                    processedAttachments.push({
-                        filename: attachment.filename,
-                        path: attachment.path
-                    });
-                } else if (
-                    attachment.path &&
-                    fs.existsSync(attachment.path)
-                ) {
-                    // Local file - read it and send as buffer
-                    processedAttachments.push({
-                        filename: attachment.filename,
-                        content: fs.readFileSync(attachment.path)
+                if (att.content) {
+                    processed.push({ filename: att.filename, content: att.content });
+                } else if (att.path && /^https?:\/\//i.test(att.path)) {
+                    processed.push({ filename: att.filename, path: att.path });
+                } else if (att.path && fs.existsSync(att.path)) {
+                    processed.push({
+                        filename: att.filename,
+                        content: fs.readFileSync(att.path)
                     });
                 } else {
-                    console.warn(
-                        `⚠️ Attachment skipped (file not found): ${attachment.path}`
-                    );
+                    console.warn(`⚠️ Attachment skipped (file not found): ${att.path}`);
                 }
-            } catch (attachErr) {
+            } catch (err) {
                 console.error(
-                    `⚠️ Attachment skipped (${attachment.filename}):`,
-                    attachErr.message
+                    `⚠️ Attachment skipped (${att.filename}):`,
+                    err.message
                 );
             }
         }
-
-        if (processedAttachments.length > 0) {
-            emailData.attachments = processedAttachments;
-        }
+        if (processed.length) emailData.attachments = processed;
     }
 
-    // Resend allows only a couple of requests per second. The customer and seller
-    // order emails go out back to back, so retry briefly when we get rate limited
-    // instead of silently losing the second email.
-    let data;
-    let error;
-
+    // Retry on rate limit (Resend allows ~2 req/sec)
+    let data, error;
     for (let attempt = 1; attempt <= 3; attempt++) {
         ({ data, error } = await getResendClient().emails.send(emailData));
 
         const rateLimited =
             error &&
-            (error.statusCode === 429 ||
-                error.name === 'rate_limit_exceeded');
+            (error.statusCode === 429 || error.name === 'rate_limit_exceeded');
 
         if (!rateLimited) break;
 
-        console.warn(
-            `⚠️ Resend rate limit hit (attempt ${attempt}/3), retrying...`
-        );
-
-        await new Promise((resolve) =>
-            setTimeout(resolve, 1000 * attempt)
-        );
+        console.warn(`⚠️ Resend rate limit hit (attempt ${attempt}/3), retrying...`);
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
     }
 
     if (error) {
         console.error('❌ Resend API Error:', error);
-
-        throw new Error(
-            error.message || JSON.stringify(error)
-        );
+        throw new Error(error.message || JSON.stringify(error));
     }
 
-    console.log(
-        '✅ Resend email sent successfully:',
-        data?.id
-    );
-
-    return {
-        ...(data || {}),
-        messageId: data?.id
-    };
+    console.log('✅ Resend email sent successfully:', data?.id);
+    return { ...(data || {}), messageId: data?.id };
 };
 
 // ============================================================
 // EMAIL TEMPLATE HELPERS
 // ============================================================
 
-const esc = (value) =>
-    String(value ?? '')
+const esc = (v) =>
+    String(v ?? '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -216,15 +152,12 @@ const money = (amount) =>
 const FONT_STACK =
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
-// Paragraph
 const p = (html, extra = '') =>
     `<p style="margin:0 0 16px 0;font-size:15px;line-height:24px;color:#475569;${extra}">${html}</p>`;
 
-// Section heading
 const h3 = (text) =>
     `<h3 style="margin:24px 0 10px 0;font-size:17px;line-height:24px;color:#0f172a;">${text}</h3>`;
 
-// Call-to-action button (works on mobile + desktop)
 const button = (href, label, color = BRAND_COLOR) => `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:24px auto;">
         <tr>
@@ -238,7 +171,6 @@ const button = (href, label, color = BRAND_COLOR) => `
     </table>
 `;
 
-// Colored notice box
 const notice = (html, bg, border, color) => `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
         <tr>
@@ -249,7 +181,6 @@ const notice = (html, bg, border, color) => `
     </table>
 `;
 
-// Bullet / numbered list
 const list = (items, ordered = false) => {
     const tag = ordered ? 'ol' : 'ul';
     return `
@@ -259,7 +190,6 @@ const list = (items, ordered = false) => {
     `;
 };
 
-// Label / value summary box
 const detailBox = (title, rows, bg = '#f8fafc', border = '#e2e8f0') => `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
            style="margin:20px 0;background:${bg};border:1px solid ${border};border-radius:10px;">
@@ -287,7 +217,6 @@ const detailBox = (title, rows, bg = '#f8fafc', border = '#e2e8f0') => `
     </table>
 `;
 
-// Product rows (customer + seller emails)
 const renderItems = (items = []) => {
     if (!Array.isArray(items) || items.length === 0) return '';
 
@@ -382,7 +311,6 @@ const itemsBox = (title, items, totalLabel, totalAmount) => {
     `;
 };
 
-// Need Help section (same on every email)
 const helpSection = () => `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
            style="margin:28px 0 0 0;background:#f1f5f9;border-radius:10px;">
@@ -399,7 +327,6 @@ const helpSection = () => `
     </table>
 `;
 
-// Master layout - responsive for mobile + desktop
 const emailLayout = ({
     preheader = '',
     accent = BRAND_COLOR,
@@ -435,7 +362,6 @@ const emailLayout = ({
 </head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:${FONT_STACK};">
 
-    <!-- Preheader (inbox preview text) -->
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">
         ${esc(preheader)}
     </div>
@@ -447,7 +373,6 @@ const emailLayout = ({
                 <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0"
                        style="width:600px;max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(15,23,42,0.08);">
 
-                    <!-- Logo header -->
                     <tr>
                         <td align="center" class="px" style="padding:22px 28px;background:#ffffff;border-bottom:1px solid #e2e8f0;">
                             <a href="${SITE_URL}" target="_blank" style="text-decoration:none;">
@@ -457,7 +382,6 @@ const emailLayout = ({
                         </td>
                     </tr>
 
-                    <!-- Hero banner -->
                     <tr>
                         <td align="center" class="px" style="padding:30px 28px;background:${accent};">
                             ${icon ? `<div style="font-size:38px;line-height:44px;margin-bottom:8px;">${icon}</div>` : ''}
@@ -466,7 +390,6 @@ const emailLayout = ({
                         </td>
                     </tr>
 
-                    <!-- Body -->
                     <tr>
                         <td class="px" style="padding:28px;">
                             ${body}
@@ -474,7 +397,6 @@ const emailLayout = ({
                         </td>
                     </tr>
 
-                    <!-- Footer -->
                     <tr>
                         <td align="center" class="px" style="padding:22px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;">
                             <p style="margin:0 0 6px 0;font-size:14px;font-weight:700;color:#334155;">${BRAND_NAME}</p>
@@ -498,203 +420,154 @@ const emailLayout = ({
 `;
 
 // ============================================================
+// SMALL SHARED HELPERS
+// ============================================================
+
+const shippingAddressBox = (order, title = '📦 Delivering To', bg = '#eff6ff', border = '#bfdbfe', color = '#1e3a8a') => {
+    const a = order.shippingAddress;
+    if (!a) return '';
+    return `
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
+            <tr>
+                <td style="background:${bg};border:1px solid ${border};border-radius:10px;padding:16px 18px;font-size:14px;line-height:22px;color:${color};">
+                    <div style="font-size:13px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;margin-bottom:6px;">${title}</div>
+                    <strong>${esc(order.customerName)}</strong><br>
+                    ${esc(a.addressLine || '')}<br>
+                    ${esc(a.city || '')}, ${esc(a.state || '')} - ${esc(a.pincode || '')}
+                    ${order.phone ? `<br>Phone: ${esc(order.phone)}` : ''}
+                </td>
+            </tr>
+        </table>
+    `;
+};
+
+// Generic email sender wrapper - eliminates the try/catch boilerplate
+const sendEmail = async (label, to, subject, layoutOptions, extra = {}) => {
+    try {
+        const senderConfig = await getSenderConfig();
+        const mailOptions = {
+            ...senderConfig,
+            to,
+            subject,
+            html: emailLayout(layoutOptions),
+            ...extra
+        };
+        const result = await sendWithResend(mailOptions);
+        console.log(`✅ ${label} sent:`, result.messageId);
+        return result;
+    } catch (error) {
+        console.error(`❌ ${label} Error:`, error);
+        return null;
+    }
+};
+
+// ============================================================
 // ORDER CONFIRMATION (CUSTOMER)
 // ============================================================
 
-exports.sendOrderConfirmation = async (
-    email,
-    order,
-    invoicePath
-) => {
-    try {
-        console.log(
-            `📧 Sending order confirmation email to ${email} for order ${order.orderId}`
-        );
+exports.sendOrderConfirmation = async (email, order, invoicePath) => {
+    console.log(
+        `📧 Sending order confirmation email to ${email} for order ${order.orderId}`
+    );
 
-        const senderConfig = await getSenderConfig();
+    const body = `
+        ${p(`Hi <strong style="color:#0f172a;">${esc(order.customerName)}</strong>,`, 'font-size:16px;')}
+        ${p(`Thank you for shopping with us! Your order <strong style="color:#0f172a;">#${esc(order.orderId)}</strong> has been received and is being processed.`)}
 
-        const addr = order.shippingAddress;
-        const addressHtml = addr
-            ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
-                    <tr>
-                        <td style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px 18px;font-size:14px;line-height:22px;color:#1e3a8a;">
-                            <div style="font-size:13px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;margin-bottom:6px;">📦 Delivering To</div>
-                            <strong>${esc(order.customerName)}</strong><br>
-                            ${esc(addr.addressLine || '')}<br>
-                            ${esc(addr.city || '')}, ${esc(addr.state || '')} - ${esc(addr.pincode || '')}
-                            ${order.phone ? `<br>Phone: ${esc(order.phone)}` : ''}
-                        </td>
-                    </tr>
-                </table>`
-            : '';
+        ${detailBox('Order Summary', [
+            ['Order ID', `#${esc(order.orderId)}`],
+            ['Order Total', money(order.total)],
+            ['Status', 'Confirmed', '#059669']
+        ])}
 
-        const body = `
-            ${p(`Hi <strong style="color:#0f172a;">${esc(order.customerName)}</strong>,`, 'font-size:16px;')}
-            ${p(`Thank you for shopping with us! Your order <strong style="color:#0f172a;">#${esc(order.orderId)}</strong> has been received and is being processed.`)}
+        ${itemsBox('Items in Your Order', order.items)}
 
-            ${detailBox('Order Summary', [
-                ['Order ID', `#${esc(order.orderId)}`],
-                ['Order Total', money(order.total)],
-                ['Status', 'Confirmed', '#059669']
-            ])}
+        ${shippingAddressBox(order)}
 
-            ${itemsBox('Items in Your Order', order.items)}
+        ${p(invoicePath
+            ? 'Your official invoice is attached to this email. Use the button below to track your order.'
+            : 'Use the button below to track your order. You can download your invoice from your dashboard.', 'font-size:14px;')}
 
-            ${addressHtml}
+        ${button(trackOrderUrl(order.orderId), 'Track Order')}
+    `;
 
-            ${p(invoicePath
-                ? 'Your official invoice is attached to this email. Use the button below to track your order.'
-                : 'Use the button below to track your order. You can download your invoice from your dashboard.', 'font-size:14px;')}
-
-            ${button(trackOrderUrl(order.orderId), 'Track Order')}
-        `;
-
-        const mailOptions = {
-            ...senderConfig,
-
-            to: email,
-
-            subject: `Order Confirmed: #${order.orderId} - ${BRAND_NAME}`,
-
-            html: emailLayout({
-                preheader: `Your order #${order.orderId} is confirmed. Thank you for shopping with ${BRAND_NAME}!`,
-                accent: '#16a34a',
-                icon: '🛍️',
-                title: 'Order Confirmed!',
-                subtitle: 'Thank you for your order',
-                body
-            }),
-
-            attachments: invoicePath
-                ? [
-                    {
-                        filename: `Invoice-${order.orderId}.pdf`,
-                        path: invoicePath
-                    }
+    return sendEmail(
+        'Order confirmation email',
+        email,
+        `Order Confirmed: #${order.orderId} - ${BRAND_NAME}`,
+        {
+            preheader: `Your order #${order.orderId} is confirmed. Thank you for shopping with ${BRAND_NAME}!`,
+            accent: '#16a34a',
+            icon: '🛍️',
+            title: 'Order Confirmed!',
+            subtitle: 'Thank you for your order',
+            body
+        },
+        invoicePath
+            ? {
+                attachments: [
+                    { filename: `Invoice-${order.orderId}.pdf`, path: invoicePath }
                 ]
-                : []
-        };
-
-        const result = await sendWithResend(mailOptions);
-
-        console.log(
-            '✅ Email sent successfully:',
-            result.messageId
-        );
-
-        return result;
-
-    } catch (error) {
-
-        console.error(
-            '❌ Email Error:',
-            error
-        );
-
-        return null;
-    }
+            }
+            : {}
+    );
 };
 
 // ============================================================
 // SELLER ORDER NOTIFICATION
 // ============================================================
 
-exports.sendSellerNotification = async (
-    sellerEmail,
-    order,
-    sellerItems
-) => {
+exports.sendSellerNotification = async (sellerEmail, order, sellerItems) => {
+    console.log(`📧 Sending seller notification to ${sellerEmail}`);
 
-    try {
+    const totalAmount = sellerItems.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+    );
 
-        console.log(
-            `📧 Sending seller notification to ${sellerEmail}`
-        );
+    const orderDate = new Date().toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+    });
 
-        const senderConfig = await getSenderConfig();
+    const body = `
+        ${p('You have received a new order. Please prepare the following items for shipment.', 'font-size:16px;color:#1e293b;')}
 
-        const totalAmount = sellerItems.reduce(
-            (sum, item) => sum + (item.price * item.quantity),
-            0
-        );
+        ${detailBox('Order Details', [
+            ['Order ID', `#${esc(order.orderId)}`],
+            ['Customer', esc(order.customerName)],
+            ['Payment Method', esc(order.paymentMethod || 'COD')],
+            ['Order Date', orderDate]
+        ])}
 
-        const orderDate = new Date().toLocaleDateString('en-IN', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric'
-        });
+        ${itemsBox('Your Products', sellerItems, 'Total', totalAmount)}
 
-        const body = `
-            ${p('You have received a new order. Please prepare the following items for shipment.', 'font-size:16px;color:#1e293b;')}
+        ${shippingAddressBox(order, '📦 Shipping Address')}
 
-            ${detailBox('Order Details', [
-                ['Order ID', `#${esc(order.orderId)}`],
-                ['Customer', esc(order.customerName)],
-                ['Payment Method', esc(order.paymentMethod || 'COD')],
-                ['Order Date', orderDate]
-            ])}
+        ${notice(
+            '<strong>⚡ Action Required:</strong> Please prepare these items for shipment. The delivery partner will collect the package soon.',
+            '#fef3c7',
+            '#f59e0b',
+            '#92400e'
+        )}
 
-            ${itemsBox('Your Products', sellerItems, 'Total', totalAmount)}
+        ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
+    `;
 
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
-                <tr>
-                    <td style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px 18px;font-size:14px;line-height:22px;color:#1e3a8a;">
-                        <div style="font-size:13px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;margin-bottom:6px;">📦 Shipping Address</div>
-                        <strong>${esc(order.customerName)}</strong><br>
-                        ${esc(order.shippingAddress?.addressLine || '')}<br>
-                        ${esc(order.shippingAddress?.city || '')}, ${esc(order.shippingAddress?.state || '')} - ${esc(order.shippingAddress?.pincode || '')}
-                        ${order.phone ? `<br>Phone: ${esc(order.phone)}` : ''}
-                    </td>
-                </tr>
-            </table>
-
-            ${notice(
-                '<strong>⚡ Action Required:</strong> Please prepare these items for shipment. The delivery partner will collect the package soon.',
-                '#fef3c7',
-                '#f59e0b',
-                '#92400e'
-            )}
-
-            ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
-        `;
-
-        const mailOptions = {
-
-            ...senderConfig,
-
-            to: sellerEmail,
-
-            subject:
-                `🎉 New Order Received: #${order.orderId} - ${BRAND_NAME}`,
-
-            html: emailLayout({
-                preheader: `New order #${order.orderId} received. Please prepare the items for shipment.`,
-                accent: '#16a34a',
-                icon: '🎉',
-                title: 'New Order Alert!',
-                subtitle: `Order #${esc(order.orderId)}`,
-                body
-            })
-        };
-
-        const result = await sendWithResend(mailOptions);
-
-        console.log(
-            '✅ Seller email sent successfully:',
-            result.messageId
-        );
-
-        return result;
-
-    } catch (error) {
-
-        console.error(
-            '❌ Seller Email Error:',
-            error
-        );
-
-        return null;
-    }
+    return sendEmail(
+        'Seller notification',
+        sellerEmail,
+        `🎉 New Order Received: #${order.orderId} - ${BRAND_NAME}`,
+        {
+            preheader: `New order #${order.orderId} received. Please prepare the items for shipment.`,
+            accent: '#16a34a',
+            icon: '🎉',
+            title: 'New Order Alert!',
+            subtitle: `Order #${esc(order.orderId)}`,
+            body
+        }
+    );
 };
 
 // ============================================================
@@ -707,262 +580,161 @@ exports.sendSellerBlockedEmail = async (
     shopName,
     blockReason = 'Policy violation'
 ) => {
+    console.log(`📧 Sending seller blocked notification to ${sellerEmail}`);
 
-    try {
+    const body = `
+        ${p(`Dear <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
+        ${p(`We regret to inform you that your seller account for <strong style="color:#0f172a;">${esc(shopName)}</strong> has been temporarily blocked by our admin team.`)}
 
-        console.log(
-            `📧 Sending seller blocked notification to ${sellerEmail}`
-        );
+        ${notice(`<strong>Reason:</strong> ${esc(blockReason)}`, '#fef3c7', '#f59e0b', '#92400e')}
 
-        const senderConfig = await getSenderConfig();
+        ${h3('What This Means')}
+        ${list([
+            'Your products are no longer visible to customers',
+            'You cannot list new products',
+            'You cannot process orders',
+            'Your account access is restricted'
+        ])}
 
-        const body = `
-            ${p(`Dear <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
-            ${p(`We regret to inform you that your seller account for <strong style="color:#0f172a;">${esc(shopName)}</strong> has been temporarily blocked by our admin team.`)}
+        ${h3('Next Steps')}
+        ${list([
+            `Review our <a href="${siteLink('/terms')}" style="color:${BRAND_COLOR};">Terms of Service</a> and <a href="${siteLink('/seller-policies')}" style="color:${BRAND_COLOR};">Seller Policies</a>`,
+            'Contact our support team to discuss the block',
+            'Provide any necessary documentation or clarification',
+            'Wait for admin review and potential unblock'
+        ], true)}
 
-            ${notice(`<strong>Reason:</strong> ${esc(blockReason)}`, '#fef3c7', '#f59e0b', '#92400e')}
+        ${p('We take these actions seriously to maintain the quality and trust of our marketplace. If you believe this is a mistake, please contact us immediately.', 'font-size:14px;color:#64748b;')}
+    `;
 
-            ${h3('What This Means')}
-            ${list([
-                'Your products are no longer visible to customers',
-                'You cannot list new products',
-                'You cannot process orders',
-                'Your account access is restricted'
-            ])}
-
-            ${h3('Next Steps')}
-            ${list([
-                `Review our <a href="${siteLink('/terms')}" style="color:${BRAND_COLOR};">Terms of Service</a> and <a href="${siteLink('/seller-policies')}" style="color:${BRAND_COLOR};">Seller Policies</a>`,
-                'Contact our support team to discuss the block',
-                'Provide any necessary documentation or clarification',
-                'Wait for admin review and potential unblock'
-            ], true)}
-
-            ${p('We take these actions seriously to maintain the quality and trust of our marketplace. If you believe this is a mistake, please contact us immediately.', 'font-size:14px;color:#64748b;')}
-        `;
-
-        const mailOptions = {
-
-            ...senderConfig,
-
-            to: sellerEmail,
-
-            subject:
-                `Account Blocked - Action Required - ${BRAND_NAME}`,
-
-            html: emailLayout({
-                preheader: 'Your seller account has been temporarily blocked. Action required.',
-                accent: '#dc2626',
-                icon: '🚫',
-                title: 'Account Blocked',
-                subtitle: 'Your seller account has been temporarily restricted',
-                body
-            })
-        };
-
-        const result = await sendWithResend(mailOptions);
-
-        console.log(
-            '✅ Seller blocked email sent successfully:',
-            result.messageId
-        );
-
-        return result;
-
-    } catch (error) {
-
-        console.error(
-            '❌ Seller Blocked Email Error:',
-            error
-        );
-
-        return null;
-    }
+    return sendEmail(
+        'Seller blocked email',
+        sellerEmail,
+        `Account Blocked - Action Required - ${BRAND_NAME}`,
+        {
+            preheader: 'Your seller account has been temporarily blocked. Action required.',
+            accent: '#dc2626',
+            icon: '🚫',
+            title: 'Account Blocked',
+            subtitle: 'Your seller account has been temporarily restricted',
+            body
+        }
+    );
 };
 
 // ============================================================
 // SELLER UNBLOCKED EMAIL
 // ============================================================
 
-exports.sendSellerUnblockedEmail = async (
-    sellerEmail,
-    sellerName,
-    shopName
-) => {
+exports.sendSellerUnblockedEmail = async (sellerEmail, sellerName, shopName) => {
+    console.log(`📧 Sending seller unblocked notification to ${sellerEmail}`);
 
-    try {
+    const body = `
+        ${p(`Dear <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
+        ${p(`Good news! Your seller account for <strong style="color:#0f172a;">${esc(shopName)}</strong> has been unblocked by our admin team.`)}
 
-        console.log(
-            `📧 Sending seller unblocked notification to ${sellerEmail}`
-        );
+        ${notice('<strong>Current Status:</strong> Pending Re-approval', '#dbeafe', '#2563eb', '#1e40af')}
 
-        const senderConfig = await getSenderConfig();
+        ${h3('What Happens Next')}
+        ${list([
+            'Your account has been moved to <strong>Pending Approvals</strong>',
+            'Our admin team will review your account again',
+            'Once approved, you can resume selling on our platform',
+            'You will receive another email when your account is approved'
+        ], true)}
 
-        const body = `
-            ${p(`Dear <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
-            ${p(`Good news! Your seller account for <strong style="color:#0f172a;">${esc(shopName)}</strong> has been unblocked by our admin team.`)}
+        ${h3('Important Reminders')}
+        ${list([
+            `Please ensure compliance with all <a href="${siteLink('/seller-policies')}" style="color:${BRAND_COLOR};">Seller Policies</a>`,
+            'Maintain high-quality product listings',
+            'Provide excellent customer service',
+            'Respond promptly to customer inquiries',
+            'Ship orders on time'
+        ])}
 
-            ${notice('<strong>Current Status:</strong> Pending Re-approval', '#dbeafe', '#2563eb', '#1e40af')}
+        ${notice(
+            '<strong>⚠️ Please Note:</strong> Future violations may result in permanent account suspension. We encourage you to review our policies carefully.',
+            '#fef3c7',
+            '#f59e0b',
+            '#92400e'
+        )}
 
-            ${h3('What Happens Next')}
-            ${list([
-                'Your account has been moved to <strong>Pending Approvals</strong>',
-                'Our admin team will review your account again',
-                'Once approved, you can resume selling on our platform',
-                'You will receive another email when your account is approved'
-            ], true)}
+        ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
 
-            ${h3('Important Reminders')}
-            ${list([
-                `Please ensure compliance with all <a href="${siteLink('/seller-policies')}" style="color:${BRAND_COLOR};">Seller Policies</a>`,
-                'Maintain high-quality product listings',
-                'Provide excellent customer service',
-                'Respond promptly to customer inquiries',
-                'Ship orders on time'
-            ])}
+        ${p('Thank you for your patience and understanding. We look forward to having you back as an active seller on our platform!', 'font-size:14px;color:#64748b;')}
+    `;
 
-            ${notice(
-                '<strong>⚠️ Please Note:</strong> Future violations may result in permanent account suspension. We encourage you to review our policies carefully.',
-                '#fef3c7',
-                '#f59e0b',
-                '#92400e'
-            )}
-
-            ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
-
-            ${p('Thank you for your patience and understanding. We look forward to having you back as an active seller on our platform!', 'font-size:14px;color:#64748b;')}
-        `;
-
-        const mailOptions = {
-
-            ...senderConfig,
-
-            to: sellerEmail,
-
-            subject:
-                `Account Unblocked - Pending Re-approval - ${BRAND_NAME}`,
-
-            html: emailLayout({
-                preheader: 'Your seller account has been unblocked and is pending re-approval.',
-                accent: '#16a34a',
-                icon: '✅',
-                title: 'Account Unblocked',
-                subtitle: 'Your account is now pending re-approval',
-                body
-            })
-        };
-
-        const result = await sendWithResend(mailOptions);
-
-        console.log(
-            '✅ Seller unblocked email sent successfully:',
-            result.messageId
-        );
-
-        return result;
-
-    } catch (error) {
-
-        console.error(
-            '❌ Seller Unblocked Email Error:',
-            error
-        );
-
-        return null;
-    }
+    return sendEmail(
+        'Seller unblocked email',
+        sellerEmail,
+        `Account Unblocked - Pending Re-approval - ${BRAND_NAME}`,
+        {
+            preheader: 'Your seller account has been unblocked and is pending re-approval.',
+            accent: '#16a34a',
+            icon: '✅',
+            title: 'Account Unblocked',
+            subtitle: 'Your account is now pending re-approval',
+            body
+        }
+    );
 };
 
 // ============================================================
 // SELLER APPROVAL EMAIL
 // ============================================================
 
-exports.sendSellerApprovalEmail = async (
-    sellerEmail,
-    sellerName,
-    shopName
-) => {
+exports.sendSellerApprovalEmail = async (sellerEmail, sellerName, shopName) => {
+    console.log(`📧 Sending seller approval notification to ${sellerEmail}`);
 
-    try {
+    const body = `
+        ${p(`Dear <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
+        ${p(`Congratulations! We're thrilled to inform you that your seller account for <strong style="color:#0f172a;">${esc(shopName)}</strong> has been approved by our admin team!`)}
 
-        console.log(
-            `📧 Sending seller approval notification to ${sellerEmail}`
-        );
+        ${notice('<strong>Status:</strong> ✅ APPROVED - You can now start selling!', '#dbeafe', '#2563eb', '#1e40af')}
 
-        const senderConfig = await getSenderConfig();
+        ${h3('What You Can Do Now')}
+        ${list([
+            '✅ List your products on our marketplace',
+            '✅ Manage your inventory and pricing',
+            '✅ Receive and process customer orders',
+            '✅ Track your sales and earnings',
+            '✅ Access seller analytics and reports'
+        ])}
 
-        const body = `
-            ${p(`Dear <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
-            ${p(`Congratulations! We're thrilled to inform you that your seller account for <strong style="color:#0f172a;">${esc(shopName)}</strong> has been approved by our admin team!`)}
+        ${h3('Getting Started')}
+        ${list([
+            'Log in to your seller dashboard',
+            'Complete your shop profile',
+            'Add your first products',
+            'Set up your payment and shipping details',
+            'Start receiving orders!'
+        ], true)}
 
-            ${notice('<strong>Status:</strong> ✅ APPROVED - You can now start selling!', '#dbeafe', '#2563eb', '#1e40af')}
+        ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
 
-            ${h3('What You Can Do Now')}
-            ${list([
-                '✅ List your products on our marketplace',
-                '✅ Manage your inventory and pricing',
-                '✅ Receive and process customer orders',
-                '✅ Track your sales and earnings',
-                '✅ Access seller analytics and reports'
-            ])}
+        ${notice(
+            `<strong>📋 Important:</strong> Please review our <a href="${siteLink('/seller-policies')}" style="color:${BRAND_COLOR};">Seller Policies</a> and <a href="${siteLink('/terms')}" style="color:${BRAND_COLOR};">Terms of Service</a> to ensure compliance.`,
+            '#fef3c7',
+            '#f59e0b',
+            '#92400e'
+        )}
 
-            ${h3('Getting Started')}
-            ${list([
-                'Log in to your seller dashboard',
-                'Complete your shop profile',
-                'Add your first products',
-                'Set up your payment and shipping details',
-                'Start receiving orders!'
-            ], true)}
+        ${p(`Welcome to the ${BRAND_NAME} family! We're excited to have you as a seller and look forward to your success on our platform.`, 'font-size:14px;color:#64748b;')}
+    `;
 
-            ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
-
-            ${notice(
-                `<strong>📋 Important:</strong> Please review our <a href="${siteLink('/seller-policies')}" style="color:${BRAND_COLOR};">Seller Policies</a> and <a href="${siteLink('/terms')}" style="color:${BRAND_COLOR};">Terms of Service</a> to ensure compliance.`,
-                '#fef3c7',
-                '#f59e0b',
-                '#92400e'
-            )}
-
-            ${p(`Welcome to the ${BRAND_NAME} family! We're excited to have you as a seller and look forward to your success on our platform.`, 'font-size:14px;color:#64748b;')}
-        `;
-
-        const mailOptions = {
-
-            ...senderConfig,
-
-            to: sellerEmail,
-
-            subject:
-                `🎉 Congratulations! Your Seller Account is Approved - ${BRAND_NAME}`,
-
-            html: emailLayout({
-                preheader: 'Congratulations! Your seller account is approved. Start selling today.',
-                accent: '#16a34a',
-                icon: '🎉',
-                title: 'Account Approved!',
-                subtitle: 'Welcome aboard, you can now start selling',
-                body
-            })
-        };
-
-        const result = await sendWithResend(mailOptions);
-
-        console.log(
-            '✅ Seller approval email sent successfully:',
-            result.messageId
-        );
-
-        return result;
-
-    } catch (error) {
-
-        console.error(
-            '❌ Seller Approval Email Error:',
-            error
-        );
-
-        return null;
-    }
+    return sendEmail(
+        'Seller approval email',
+        sellerEmail,
+        `🎉 Congratulations! Your Seller Account is Approved - ${BRAND_NAME}`,
+        {
+            preheader: 'Congratulations! Your seller account is approved. Start selling today.',
+            accent: '#16a34a',
+            icon: '🎉',
+            title: 'Account Approved!',
+            subtitle: 'Welcome aboard, you can now start selling',
+            body
+        }
+    );
 };
 
 // ============================================================
@@ -973,147 +745,88 @@ exports.sendSellerRejectionEmail = async (
     sellerEmail,
     sellerName,
     shopName,
-    rejectionReason =
-        'Application did not meet our requirements'
+    rejectionReason = 'Application did not meet our requirements'
 ) => {
+    console.log(`📧 Sending seller rejection notification to ${sellerEmail}`);
 
-    try {
+    const body = `
+        ${p(`Dear <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
+        ${p(`Thank you for your interest in becoming a seller on ${BRAND_NAME}. After careful review of your application for <strong style="color:#0f172a;">${esc(shopName)}</strong>, we regret to inform you that we are unable to approve your seller account at this time.`)}
 
-        console.log(
-            `📧 Sending seller rejection notification to ${sellerEmail}`
-        );
+        ${notice(`<strong>Reason:</strong> ${esc(rejectionReason)}`, '#fef3c7', '#f59e0b', '#92400e')}
 
-        const senderConfig = await getSenderConfig();
+        ${h3('What This Means')}
+        ${list([
+            'Your seller application has not been approved',
+            'You cannot list products on our marketplace',
+            'Your account remains as a regular customer account',
+            'You can still shop on our platform'
+        ])}
 
-        const body = `
-            ${p(`Dear <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
-            ${p(`Thank you for your interest in becoming a seller on ${BRAND_NAME}. After careful review of your application for <strong style="color:#0f172a;">${esc(shopName)}</strong>, we regret to inform you that we are unable to approve your seller account at this time.`)}
+        ${h3('Next Steps')}
+        ${p('If you believe this decision was made in error or would like to reapply in the future, please:')}
+        ${list([
+            `Review our <a href="${siteLink('/seller-requirements')}" style="color:${BRAND_COLOR};">Seller Requirements</a>`,
+            'Ensure all documentation is complete and accurate',
+            'Contact our support team for clarification',
+            'Consider reapplying after addressing the concerns'
+        ], true)}
 
-            ${notice(`<strong>Reason:</strong> ${esc(rejectionReason)}`, '#fef3c7', '#f59e0b', '#92400e')}
+        ${notice(
+            '<strong>💡 Tip:</strong> Make sure your business documentation is complete, your product categories are clear, and your shop information is accurate before reapplying.',
+            '#dbeafe',
+            '#2563eb',
+            '#1e40af'
+        )}
 
-            ${h3('What This Means')}
-            ${list([
-                'Your seller application has not been approved',
-                'You cannot list products on our marketplace',
-                'Your account remains as a regular customer account',
-                'You can still shop on our platform'
-            ])}
+        ${p(`We appreciate your interest in ${BRAND_NAME} and hope to work with you in the future. Thank you for your understanding.`, 'font-size:14px;color:#64748b;')}
+    `;
 
-            ${h3('Next Steps')}
-            ${p('If you believe this decision was made in error or would like to reapply in the future, please:')}
-            ${list([
-                `Review our <a href="${siteLink('/seller-requirements')}" style="color:${BRAND_COLOR};">Seller Requirements</a>`,
-                'Ensure all documentation is complete and accurate',
-                'Contact our support team for clarification',
-                'Consider reapplying after addressing the concerns'
-            ], true)}
-
-            ${notice(
-                '<strong>💡 Tip:</strong> Make sure your business documentation is complete, your product categories are clear, and your shop information is accurate before reapplying.',
-                '#dbeafe',
-                '#2563eb',
-                '#1e40af'
-            )}
-
-            ${p(`We appreciate your interest in ${BRAND_NAME} and hope to work with you in the future. Thank you for your understanding.`, 'font-size:14px;color:#64748b;')}
-        `;
-
-        const mailOptions = {
-
-            ...senderConfig,
-
-            to: sellerEmail,
-
-            subject:
-                `Application Status Update - ${BRAND_NAME}`,
-
-            html: emailLayout({
-                preheader: 'An update on your seller application.',
-                accent: '#475569',
-                icon: '📄',
-                title: 'Application Status Update',
-                subtitle: 'Your seller application has been reviewed',
-                body
-            })
-        };
-
-        const result = await sendWithResend(mailOptions);
-
-        console.log(
-            '✅ Seller rejection email sent successfully:',
-            result.messageId
-        );
-
-        return result;
-
-    } catch (error) {
-
-        console.error(
-            '❌ Seller Rejection Email Error:',
-            error
-        );
-
-        return null;
-    }
+    return sendEmail(
+        'Seller rejection email',
+        sellerEmail,
+        `Application Status Update - ${BRAND_NAME}`,
+        {
+            preheader: 'An update on your seller application.',
+            accent: '#475569',
+            icon: '📄',
+            title: 'Application Status Update',
+            subtitle: 'Your seller application has been reviewed',
+            body
+        }
+    );
 };
 
 // ============================================================
 // NOTIFY SELLERS
 // ============================================================
 
-exports.notifySellers = async (
-    orderData
-) => {
-
+exports.notifySellers = async (orderData) => {
     try {
+        const items = orderData.items || [];
+        if (items.length === 0) return;
 
-        const items =
-            orderData.items || [];
-
-        if (items.length === 0) {
-            return;
-        }
-
-        // Group items by sellerId
         const sellerItemsMap = {};
 
-        // Some order payloads only carry the seller on the order itself.
-        // Use it only when no item has a sellerId, so mixed carts are not mis-assigned.
-        const orderLevelSellerId =
-            items.some(i => i && i.sellerId)
-                ? null
-                : orderData.sellerId;
+        // Use order-level sellerId only if no item has its own sellerId
+        const orderLevelSellerId = items.some((i) => i && i.sellerId)
+            ? null
+            : orderData.sellerId;
 
-        items.forEach(item => {
-
-            const sellerId =
-                item.sellerId || orderLevelSellerId;
-
+        items.forEach((item) => {
+            const sellerId = item.sellerId || orderLevelSellerId;
             if (
                 !sellerId ||
                 sellerId === 'system_generated' ||
                 sellerId === 'official'
-            ) {
+            )
                 return;
-            }
-
-            if (!sellerItemsMap[sellerId]) {
-                sellerItemsMap[sellerId] = [];
-            }
-
-            sellerItemsMap[sellerId].push(item);
-
+            (sellerItemsMap[sellerId] ||= []).push(item);
         });
 
-        const sellerIds =
-            Object.keys(sellerItemsMap);
-
+        const sellerIds = Object.keys(sellerItemsMap);
         if (sellerIds.length === 0) {
-
-            console.log(
-                '[NotifySellers] No valid sellers to notify'
-            );
-
+            console.log('[NotifySellers] No valid sellers to notify');
             return;
         }
 
@@ -1122,17 +835,13 @@ exports.notifySellers = async (
         );
 
         const isEmail = (v) =>
-            typeof v === 'string' &&
-            /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+            typeof v === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
         const firstEmail = (...candidates) => {
             const found = candidates.find(isEmail);
             return found ? found.trim() : null;
         };
 
-        // Same set of fields the admin notifications already look at, plus the
-        // nested onboarding fields. Checking only email/contactEmail missed sellers
-        // whose address is stored under another key.
         const emailFromSellerDoc = (d = {}) =>
             firstEmail(
                 d.contactEmail,
@@ -1143,22 +852,13 @@ exports.notifySellers = async (
                 d.personalInfo?.email
             );
 
-        // Helper: read email from the users collection, then Firebase Auth
         const getUserEmail = async (uid) => {
             try {
-                const userDoc =
-                    await db
-                        .collection('users')
-                        .doc(uid)
-                        .get();
-
-                // Works for both Admin SDK (property)
-                // and client SDK (function)
+                const userDoc = await db.collection('users').doc(uid).get();
                 const userExists =
                     typeof userDoc.exists === 'function'
                         ? userDoc.exists()
                         : userDoc.exists;
-
                 if (userExists) {
                     const d = userDoc.data() || {};
                     const fromUser = firstEmail(d.contactEmail, d.email);
@@ -1174,255 +874,136 @@ exports.notifySellers = async (
             try {
                 const authUser = await admin.auth().getUser(uid);
                 if (isEmail(authUser?.email)) return authUser.email.trim();
-            } catch (err) {
-                // Not a Firebase Auth user - nothing more to try
+            } catch {
+                // Not a Firebase Auth user
             }
 
             return null;
         };
 
-        // Batch fetch seller emails
         const sellerEmails = {};
         const foundInSellers = new Set();
 
         // Firestore 'in' query supports up to 10 items
-        for (
-            let i = 0;
-            i < sellerIds.length;
-            i += 10
-        ) {
-
-            const batch =
-                sellerIds.slice(
-                    i,
-                    i + 10
-                );
-
+        for (let i = 0; i < sellerIds.length; i += 10) {
+            const batch = sellerIds.slice(i, i + 10);
             try {
+                const sellersSnap = await db
+                    .collection('sellers')
+                    .where('__name__', 'in', batch)
+                    .get();
 
-                const sellersSnap =
-                    await db
-                        .collection('sellers')
-                        .where(
-                            '__name__',
-                            'in',
-                            batch
-                        )
-                        .get();
-
-                for (
-                    const doc of sellersSnap.docs
-                ) {
-
+                for (const doc of sellersSnap.docs) {
                     foundInSellers.add(doc.id);
+                    const sellerData = doc.data();
 
-                    const sellerData =
-                        doc.data();
-
-                    const status =
-                        String(sellerData.sellerStatus || '')
-                            .toUpperCase();
-
+                    const status = String(sellerData.sellerStatus || '').toUpperCase();
                     if (status !== 'APPROVED') {
-
                         console.warn(
                             `[NotifySellers] Seller ${doc.id} skipped - status is "${sellerData.sellerStatus}" (needs APPROVED)`
                         );
-
                         continue;
                     }
 
-                    let email =
-                        emailFromSellerDoc(sellerData);
+                    let email = emailFromSellerDoc(sellerData);
+                    if (!email) email = await getUserEmail(doc.id);
 
-                    // If not found, fetch from users
-                    if (!email) {
-                        email = await getUserEmail(doc.id);
-                    }
-
-                    if (email) {
-
-                        sellerEmails[doc.id] =
-                            email;
-
-                    } else {
-
+                    if (email) sellerEmails[doc.id] = email;
+                    else
                         console.warn(
                             `[NotifySellers] Seller ${doc.id} has no email in sellers or users`
                         );
-
-                    }
-
                 }
-
             } catch (batchError) {
-
                 console.error(
                     `[NotifySellers] Error fetching batch ${i / 10 + 1}:`,
                     batchError
                 );
-
             }
-
         }
 
-        // Sellers missing from the 'sellers' collection: try the users collection
+        // Fallback: sellers missing from 'sellers' collection
         for (const sellerId of sellerIds) {
-
             if (foundInSellers.has(sellerId)) continue;
-
             console.warn(
                 `[NotifySellers] Seller ${sellerId} not found in 'sellers' collection, trying users`
             );
-
             const fallbackEmail = await getUserEmail(sellerId);
-
-            if (fallbackEmail) {
-                sellerEmails[sellerId] = fallbackEmail;
-            }
-
+            if (fallbackEmail) sellerEmails[sellerId] = fallbackEmail;
         }
 
         // Send emails
         const emailPromises = [];
-
-        for (
-            const [
-                sellerId,
-                sellerItems
-            ] of Object.entries(
-                sellerItemsMap
-            )
-        ) {
-
-            const sellerEmail =
-                sellerEmails[sellerId];
-
+        for (const [sellerId, sellerItems] of Object.entries(sellerItemsMap)) {
+            const sellerEmail = sellerEmails[sellerId];
             if (sellerEmail) {
-
                 emailPromises.push(
-
                     exports
-                        .sendSellerNotification(
-                            sellerEmail,
-                            orderData,
-                            sellerItems
-                        )
-                        .catch(err =>
+                        .sendSellerNotification(sellerEmail, orderData, sellerItems)
+                        .catch((err) =>
                             console.error(
                                 `[NotifySellers] Failed to send to ${sellerEmail}:`,
                                 err
                             )
                         )
-
                 );
-
             } else {
-
                 console.warn(
                     `[NotifySellers] No email found for seller ${sellerId}`
                 );
-
             }
-
         }
 
-        await Promise.all(
-            emailPromises
-        );
-
+        await Promise.all(emailPromises);
         console.log(
             `[NotifySellers] Sent ${emailPromises.length} seller notification(s)`
         );
-
     } catch (error) {
-
-        console.error(
-            '[NotifySellers] Error:',
-            error
-        );
-
+        console.error('[NotifySellers] Error:', error);
     }
-
 };
 
 // ============================================================
 // ORDER CANCELLATION
 // ============================================================
 
-exports.sendOrderCancellation = async (
-    email,
-    order
-) => {
+exports.sendOrderCancellation = async (email, order) => {
+    console.log(
+        `📧 Sending order cancellation email to ${email} for order ${order.orderId}`
+    );
 
-    try {
+    const body = `
+        ${p(`Hi <strong style="color:#0f172a;">${esc(order.customerName)}</strong>,`, 'font-size:16px;')}
+        ${p(`This email confirms that your order <strong style="color:#0f172a;">#${esc(order.orderId)}</strong> has been successfully cancelled.`)}
 
-        console.log(
-            `📧 Sending order cancellation email to ${email} for order ${order.orderId}`
-        );
+        ${detailBox('Order Summary', [
+            ['Order ID', `#${esc(order.orderId)}`],
+            ['Order Total', money(order.total)],
+            ['Status', 'Cancelled', '#ef4444']
+        ], '#fff1f2', '#fecdd3')}
 
-        const senderConfig =
-            await getSenderConfig();
+        ${itemsBox('Cancelled Items', order.items)}
 
-        const body = `
-            ${p(`Hi <strong style="color:#0f172a;">${esc(order.customerName)}</strong>,`, 'font-size:16px;')}
-            ${p(`This email confirms that your order <strong style="color:#0f172a;">#${esc(order.orderId)}</strong> has been successfully cancelled.`)}
+        ${p('The refund (if any) will be processed according to our refund policy. You can check the status of your refund in your dashboard.', 'font-size:14px;')}
 
-            ${detailBox('Order Summary', [
-                ['Order ID', `#${esc(order.orderId)}`],
-                ['Order Total', money(order.total)],
-                ['Status', 'Cancelled', '#ef4444']
-            ], '#fff1f2', '#fecdd3')}
+        ${button(CUSTOMER_DASHBOARD_URL, 'Go to Dashboard')}
 
-            ${itemsBox('Cancelled Items', order.items)}
+        ${p('We hope to serve you again soon. Happy shopping!', 'font-size:14px;color:#64748b;text-align:center;')}
+    `;
 
-            ${p('The refund (if any) will be processed according to our refund policy. You can check the status of your refund in your dashboard.', 'font-size:14px;')}
-
-            ${button(CUSTOMER_DASHBOARD_URL, 'Go to Dashboard')}
-
-            ${p('We hope to serve you again soon. Happy shopping!', 'font-size:14px;color:#64748b;text-align:center;')}
-        `;
-
-        const mailOptions = {
-
-            ...senderConfig,
-
-            to: email,
-
-            subject:
-                `Order Cancelled: #${order.orderId} - ${BRAND_NAME}`,
-
-            html: emailLayout({
-                preheader: `Your order #${order.orderId} has been cancelled.`,
-                accent: '#ef4444',
-                icon: '❌',
-                title: 'Order Cancelled',
-                subtitle: `Order #${esc(order.orderId)}`,
-                body
-            })
-        };
-
-        const result =
-            await sendWithResend(
-                mailOptions
-            );
-
-        console.log(
-            '✅ Cancellation email sent successfully:',
-            result.messageId
-        );
-
-        return result;
-
-    } catch (error) {
-
-        console.error(
-            '❌ Cancellation Email Error:',
-            error
-        );
-
-        return null;
-    }
+    return sendEmail(
+        'Cancellation email',
+        email,
+        `Order Cancelled: #${order.orderId} - ${BRAND_NAME}`,
+        {
+            preheader: `Your order #${order.orderId} has been cancelled.`,
+            accent: '#ef4444',
+            icon: '❌',
+            title: 'Order Cancelled',
+            subtitle: `Order #${esc(order.orderId)}`,
+            body
+        }
+    );
 };
 
 // ============================================================
@@ -1435,84 +1016,51 @@ exports.sendOutOfStockNotification = async (
     productName,
     productDetails = {}
 ) => {
+    console.log(
+        `📧 Sending out-of-stock notification to ${sellerEmail} for product "${productName}"`
+    );
 
-    try {
+    const body = `
+        ${p(`Dear <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
+        ${p(`This is an important notification from the admin team. Your product listed on <strong style="color:#0f172a;">${BRAND_NAME}</strong> is currently <strong>out of stock</strong>.`)}
 
-        console.log(
-            `📧 Sending out-of-stock notification to ${sellerEmail} for product "${productName}"`
-        );
+        ${detailBox('Product Details', [
+            ['Product Name', esc(productName)],
+            ['Category', esc(productDetails.category || 'N/A')],
+            ['Price', productDetails.price ? money(productDetails.price) : 'N/A'],
+            ['Current Stock', '0 units', '#dc2626']
+        ], '#fffbeb', '#fde68a')}
 
-        const senderConfig =
-            await getSenderConfig();
+        ${h3('Action Required')}
+        ${list([
+            'Please restock this product as soon as possible',
+            'Update the stock quantity in your seller dashboard',
+            'Customers are unable to purchase this product until it is restocked'
+        ])}
 
-        const body = `
-            ${p(`Dear <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
-            ${p(`This is an important notification from the admin team. Your product listed on <strong style="color:#0f172a;">${BRAND_NAME}</strong> is currently <strong>out of stock</strong>.`)}
+        ${notice(
+            '<strong>⚡ Urgent:</strong> Out-of-stock products affect your sales and customer satisfaction. Please update your inventory at the earliest.',
+            '#fee2e2',
+            '#dc2626',
+            '#991b1b'
+        )}
 
-            ${detailBox('Product Details', [
-                ['Product Name', esc(productName)],
-                ['Category', esc(productDetails.category || 'N/A')],
-                ['Price', productDetails.price ? money(productDetails.price) : 'N/A'],
-                ['Current Stock', '0 units', '#dc2626']
-            ], '#fffbeb', '#fde68a')}
+        ${button(SELLER_DASHBOARD_URL, 'Update Stock Now')}
+    `;
 
-            ${h3('Action Required')}
-            ${list([
-                'Please restock this product as soon as possible',
-                'Update the stock quantity in your seller dashboard',
-                'Customers are unable to purchase this product until it is restocked'
-            ])}
-
-            ${notice(
-                '<strong>⚡ Urgent:</strong> Out-of-stock products affect your sales and customer satisfaction. Please update your inventory at the earliest.',
-                '#fee2e2',
-                '#dc2626',
-                '#991b1b'
-            )}
-
-            ${button(SELLER_DASHBOARD_URL, 'Update Stock Now')}
-        `;
-
-        const mailOptions = {
-
-            ...senderConfig,
-
-            to: sellerEmail,
-
-            subject:
-                `⚠️ Product Out of Stock: ${productName} - ${BRAND_NAME}`,
-
-            html: emailLayout({
-                preheader: `${productName} is out of stock. Please restock soon.`,
-                accent: '#d97706',
-                icon: '⚠️',
-                title: 'Product Out of Stock',
-                subtitle: 'Restock needed to continue selling',
-                body
-            })
-        };
-
-        const result =
-            await sendWithResend(
-                mailOptions
-            );
-
-        console.log(
-            '✅ Out-of-stock email sent successfully:',
-            result.messageId
-        );
-
-        return result;
-
-    } catch (error) {
-
-        console.error(
-            '❌ Out-of-Stock Email Error:',
-            error
-        );
-
-        return null;
-    }
+    return sendEmail(
+        'Out-of-stock email',
+        sellerEmail,
+        `⚠️ Product Out of Stock: ${productName} - ${BRAND_NAME}`,
+        {
+            preheader: `${productName} is out of stock. Please restock soon.`,
+            accent: '#d97706',
+            icon: '⚠️',
+            title: 'Product Out of Stock',
+            subtitle: 'Restock needed to continue selling',
+            body
+        }
+    );
 };
 
 // ============================================================
@@ -1525,72 +1073,39 @@ exports.sendProductRemovedNotification = async (
     productName,
     productDetails = {}
 ) => {
+    console.log(
+        `📧 Sending product removal notification to ${sellerEmail} for product: ${productName}`
+    );
 
-    try {
+    const body = `
+        ${p(`Hi <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
+        ${p(`We're writing to inform you that your product <strong style="color:#0f172a;">"${esc(productName)}"</strong> has been removed from the website by the admin.`)}
 
-        console.log(
-            `📧 Sending product removal notification to ${sellerEmail} for product: ${productName}`
-        );
+        ${detailBox('Product Details', [
+            ['Product Name', esc(productName)],
+            productDetails.category ? ['Category', esc(productDetails.category)] : null,
+            productDetails.price ? ['Price', money(productDetails.price)] : null,
+            ['Status', 'Removed by Admin', '#dc2626']
+        ], '#fef2f2', '#fecaca')}
 
-        const senderConfig =
-            await getSenderConfig();
+        ${p('This product is no longer visible to customers on the website. If you believe this was done in error or have questions, please contact us using the details below.', 'font-size:14px;')}
 
-        const body = `
-            ${p(`Hi <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
-            ${p(`We're writing to inform you that your product <strong style="color:#0f172a;">"${esc(productName)}"</strong> has been removed from the website by the admin.`)}
+        ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
+    `;
 
-            ${detailBox('Product Details', [
-                ['Product Name', esc(productName)],
-                productDetails.category ? ['Category', esc(productDetails.category)] : null,
-                productDetails.price ? ['Price', money(productDetails.price)] : null,
-                ['Status', 'Removed by Admin', '#dc2626']
-            ], '#fef2f2', '#fecaca')}
-
-            ${p(`This product is no longer visible to customers on the website. If you believe this was done in error or have questions, please contact us using the details below.`, 'font-size:14px;')}
-
-            ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard')}
-        `;
-
-        const mailOptions = {
-
-            ...senderConfig,
-
-            to: sellerEmail,
-
-            subject:
-                `Product Removed: ${productName} - ${BRAND_NAME}`,
-
-            html: emailLayout({
-                preheader: `${productName} has been removed from the website.`,
-                accent: '#dc2626',
-                icon: '🗑️',
-                title: 'Product Removed',
-                subtitle: 'A product was removed from the website',
-                body
-            })
-        };
-
-        const result =
-            await sendWithResend(
-                mailOptions
-            );
-
-        console.log(
-            '✅ Product removal notification sent successfully:',
-            result.messageId
-        );
-
-        return result;
-
-    } catch (error) {
-
-        console.error(
-            '❌ Product removal notification error:',
-            error
-        );
-
-        return null;
-    }
+    return sendEmail(
+        'Product removal notification',
+        sellerEmail,
+        `Product Removed: ${productName} - ${BRAND_NAME}`,
+        {
+            preheader: `${productName} has been removed from the website.`,
+            accent: '#dc2626',
+            icon: '🗑️',
+            title: 'Product Removed',
+            subtitle: 'A product was removed from the website',
+            body
+        }
+    );
 };
 
 // ============================================================
@@ -1603,70 +1118,37 @@ exports.sendProductRestoredNotification = async (
     productName,
     productDetails = {}
 ) => {
+    console.log(
+        `📧 Sending product restored notification to ${sellerEmail} for product: ${productName}`
+    );
 
-    try {
+    const body = `
+        ${p(`Hi <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
+        ${p(`Great news! Your product <strong style="color:#0f172a;">"${esc(productName)}"</strong> has been restored and is now live on the website again.`)}
 
-        console.log(
-            `📧 Sending product restored notification to ${sellerEmail} for product: ${productName}`
-        );
+        ${detailBox('Product Details', [
+            ['Product Name', esc(productName)],
+            productDetails.category ? ['Category', esc(productDetails.category)] : null,
+            productDetails.price ? ['Price', money(productDetails.price)] : null,
+            ['Status', 'Active & Live', '#16a34a']
+        ], '#f0fdf4', '#bbf7d0')}
 
-        const senderConfig =
-            await getSenderConfig();
+        ${p('Your product is now visible to customers and available for purchase. You can manage your products and view sales in your seller dashboard.', 'font-size:14px;')}
 
-        const body = `
-            ${p(`Hi <strong style="color:#0f172a;">${esc(sellerName)}</strong>,`, 'font-size:16px;')}
-            ${p(`Great news! Your product <strong style="color:#0f172a;">"${esc(productName)}"</strong> has been restored and is now live on the website again.`)}
+        ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard', '#16a34a')}
+    `;
 
-            ${detailBox('Product Details', [
-                ['Product Name', esc(productName)],
-                productDetails.category ? ['Category', esc(productDetails.category)] : null,
-                productDetails.price ? ['Price', money(productDetails.price)] : null,
-                ['Status', 'Active & Live', '#16a34a']
-            ], '#f0fdf4', '#bbf7d0')}
-
-            ${p('Your product is now visible to customers and available for purchase. You can manage your products and view sales in your seller dashboard.', 'font-size:14px;')}
-
-            ${button(SELLER_DASHBOARD_URL, 'Go to Seller Dashboard', '#16a34a')}
-        `;
-
-        const mailOptions = {
-
-            ...senderConfig,
-
-            to: sellerEmail,
-
-            subject:
-                `Product Restored: ${productName} - ${BRAND_NAME}`,
-
-            html: emailLayout({
-                preheader: `${productName} is live on the website again.`,
-                accent: '#16a34a',
-                icon: '✅',
-                title: 'Product Restored',
-                subtitle: 'Your product is live again',
-                body
-            })
-        };
-
-        const result =
-            await sendWithResend(
-                mailOptions
-            );
-
-        console.log(
-            '✅ Product restored notification sent successfully:',
-            result.messageId
-        );
-
-        return result;
-
-    } catch (error) {
-
-        console.error(
-            '❌ Product restored notification error:',
-            error
-        );
-
-        return null;
-    }
+    return sendEmail(
+        'Product restored notification',
+        sellerEmail,
+        `Product Restored: ${productName} - ${BRAND_NAME}`,
+        {
+            preheader: `${productName} is live on the website again.`,
+            accent: '#16a34a',
+            icon: '✅',
+            title: 'Product Restored',
+            subtitle: 'Your product is live again',
+            body
+        }
+    );
 };
