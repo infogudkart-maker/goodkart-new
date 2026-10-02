@@ -52,53 +52,22 @@ const getResendClient = () => {
     return _resend;
 };
 
+// All GoodKart emails will be sent from this address.
+// For production: verify goodsynk.com in Resend dashboard (resend.com/domains)
+// For development: using Resend's built-in test sender (no domain verification needed)
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL
+    || 'GoodKart <onboarding@resend.dev>';
+
 // ============================================================
 // SENDER CONFIGURATION
 // ============================================================
-// IMPORTANT: All GoodKart emails MUST be sent from a verified domain.
-// Hard-coded so it can never drift via env vars.
-//
-// Requirements in Resend dashboard (https://resend.com/domains):
-//   1. Add domain: goodsynk.com
-//   2. Add the SPF, DKIM and DMARC DNS records Resend gives you
-//   3. Wait for the domain status to become "Verified" (green ✓)
-//   4. Only then will Resend actually deliver to arbitrary recipients.
-//      Before verification, Resend returns 200 OK but silently drops mail
-//      for anyone other than the account owner.
-// ============================================================
-
-const VERIFIED_SENDER_DOMAIN = 'goodsynk.com';
-const RESEND_FROM_EMAIL = `GoodKart <notification@${VERIFIED_SENDER_DOMAIN}>`;
-
-// Warn loudly if anyone tries to override this via env.
-if (
-    process.env.RESEND_FROM_EMAIL &&
-    process.env.RESEND_FROM_EMAIL !== RESEND_FROM_EMAIL
-) {
-    console.warn(
-        `⚠️ RESEND_FROM_EMAIL env ("${process.env.RESEND_FROM_EMAIL}") is ignored. ` +
-        `Hard-coded to: "${RESEND_FROM_EMAIL}"`
-    );
-}
-
-// ============================================================
-// SENDER CONFIG (per-email, resolves reply-to from admin config)
-// ============================================================
 
 const getSenderConfig = async () => {
-    let adminConfig = {};
-    try {
-        adminConfig = (await getAdminConfig()) || {};
-    } catch (err) {
-        console.warn(
-            '⚠️ getAdminConfig() failed, falling back to default reply-to:',
-            err.message
-        );
-    }
+    const adminConfig = await getAdminConfig();
 
     return {
         from: RESEND_FROM_EMAIL,
-        replyTo: adminConfig.email || SUPPORT_EMAIL
+        replyTo: adminConfig.email
     };
 };
 
@@ -247,55 +216,6 @@ const money = (amount) =>
 const FONT_STACK =
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
-// ------------------------------------------------------------
-// Variant value formatter
-// ------------------------------------------------------------
-// Cart/order payloads can carry the variant selection either as a plain
-// string ("Black", "256GB") or as a structured object
-// ({ label: '256GB', value: '256' } / { name: 'Black' } etc).
-// This renders a safe human-readable string in every case so we never emit
-// the infamous "[object Object]" inside emails.
-// ------------------------------------------------------------
-const fmtVariant = (value) => {
-    if (value === null || value === undefined) return '';
-
-    if (typeof value === 'string') return value;
-
-    if (typeof value === 'number' || typeof value === 'boolean') {
-        return String(value);
-    }
-
-    if (Array.isArray(value)) {
-        return value.map(fmtVariant).filter(Boolean).join(', ');
-    }
-
-    if (typeof value === 'object') {
-        // Try the common shapes used by admin panels / storefronts
-        const candidate =
-            value.label ??
-            value.value ??
-            value.name ??
-            value.title ??
-            value.text ??
-            value.size ??
-            value.capacity ??
-            value.storage;
-
-        if (candidate !== undefined && candidate !== null) {
-            return fmtVariant(candidate);
-        }
-
-        // Last resort: stringify but strip braces/quotes for readability
-        try {
-            return JSON.stringify(value);
-        } catch {
-            return String(value);
-        }
-    }
-
-    return String(value);
-};
-
 // Paragraph
 const p = (html, extra = '') =>
     `<p style="margin:0 0 16px 0;font-size:15px;line-height:24px;color:#475569;${extra}">${html}</p>`;
@@ -384,10 +304,9 @@ const renderItems = (items = []) => {
 
             const sel = item.selections || {};
             const variantParts = [
-                sel.color   ? `Color: ${esc(fmtVariant(sel.color))}`     : '',
-                sel.size    ? `Size: ${esc(fmtVariant(sel.size))}`       : '',
-                sel.storage ? `Storage: ${esc(fmtVariant(sel.storage))}` : '',
-                sel.variant ? `Variant: ${esc(fmtVariant(sel.variant))}` : ''
+                sel.color ? `Color: ${esc(sel.color)}` : '',
+                sel.size ? `Size: ${esc(sel.size)}` : '',
+                sel.storage ? `Storage: ${esc(sel.storage)}` : ''
             ].filter(Boolean);
 
             const img = item.imageUrl || item.image || '';
