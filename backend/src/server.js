@@ -21,10 +21,10 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-    origin: ['https://goodkart.onrender.com', 'http://localhost:5173', 'http://localhost:3000'],
+    origin: [process.env.FRONTEND_URL, 'https://sellsathifrontend.onrender.com', 'http://localhost:5173', 'http://localhost:3000'].filter(Boolean),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-uid', 'x-role', 'X-Test-UID']
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-uid', 'x-role']
 }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -35,21 +35,35 @@ app.use((req, res, next) => {
 });
 
 
+const rateLimit = require('express-rate-limit');
+
 // Global Logger (Diagnostic)
 app.use((req, res, next) => {
-    console.log(`[REQUEST] ${req.method} ${req.url} | UID: ${req.headers['x-test-uid'] || 'NONE'}`);
+    console.log(`[REQUEST] ${req.method} ${req.url}`);
     next();
 });
 
+// Rate Limiting Policy: 100 requests per 15 minutes per IP for sensitive routes
+const secureRouteLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    message: { 
+        success: false, 
+        message: 'Too many requests from this IP, please try again after 15 minutes.' 
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 // Domain Routes
-app.use('/auth', authRoutes);
+app.use('/auth', secureRouteLimiter, authRoutes);
 app.use('/admin', adminRoutes);
 app.use('/admin/config', adminConfigRoutes);
 app.use('/seller', sellerRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
 app.use('/consumer', consumerRoutes);
-app.use('/payment', paymentRoutes);
+app.use('/payment', secureRouteLimiter, paymentRoutes);
 app.use('/reviews', reviewRoutes);
 app.use('/webhook', shippingRoutes); // Shiprocket webhook
 app.use('/shipping', shippingRoutes); // Shipping estimation and rates
@@ -79,6 +93,8 @@ app.listen(PORT, () => {
     console.log(`   Mode: ${process.env.NODE_ENV || 'development'}`);
     console.log(`   F`);
 });
+
+
 
 
 
