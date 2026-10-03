@@ -1,5 +1,4 @@
 const fs = require('fs');
-const { Resend } = require('resend');
 const { getAdminConfig } = require('./adminConfigService');
 const { db, admin } = require('../../config/firebase');
 
@@ -28,26 +27,36 @@ const SUPPORT_EMAIL = 'info@ssinphinite.org';
 const SUPPORT_PHONE = '7996900699';
 
 // ============================================================
-// RESEND CONFIGURATION
+// BREVO CONFIGURATION
 // ============================================================
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 
-if (!RESEND_API_KEY) {
+if (!BREVO_API_KEY) {
     console.warn(
-        '⚠️ RESEND_API_KEY is not configured. Email sending will fail until it is added.'
+        '⚠️ BREVO_API_KEY is not configured. Email sending will fail until it is added.'
     );
 }
 
-let _resend = null;
-const getResendClient = () => {
-    if (!_resend) _resend = new Resend(RESEND_API_KEY);
-    return _resend;
+// Sender must be a verified sender / authenticated domain in Brevo.
+const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'notification@goodsynk.com';
+const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || BRAND_NAME;
+
+// Accepts "Name <email@x.com>" or "email@x.com"
+const parseSender = (value) => {
+    if (!value) return { name: BREVO_FROM_NAME, email: BREVO_FROM_EMAIL };
+    const match = String(value).match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+    if (match) {
+        return {
+            name: match[1].replace(/^"|"$/g, '') || BREVO_FROM_NAME,
+            email: match[2].trim()
+        };
+    }
+    return { name: BREVO_FROM_NAME, email: String(value).trim() };
 };
 
-// ✅ All GoodKart emails are now sent from the verified GoodSynk domain.
-const RESEND_FROM_EMAIL =
-    process.env.RESEND_FROM_EMAIL || `${BRAND_NAME} <notification@goodsynk.com>`;
+const DEFAULT_SENDER = { name: BREVO_FROM_NAME, email: BREVO_FROM_EMAIL };
 
 // ============================================================
 // SENDER CONFIGURATION
@@ -56,29 +65,43 @@ const RESEND_FROM_EMAIL =
 const getSenderConfig = async () => {
     try {
         const adminConfig = await getAdminConfig();
-        return { from: RESEND_FROM_EMAIL, replyTo: adminConfig.email };
+        return { from: DEFAULT_SENDER, replyTo: adminConfig.email };
     } catch {
-        return { from: RESEND_FROM_EMAIL, replyTo: SUPPORT_EMAIL };
+        return { from: DEFAULT_SENDER, replyTo: SUPPORT_EMAIL };
     }
 };
 
 // ============================================================
-// RESEND EMAIL SENDER
+// BREVO EMAIL SENDER
 // ============================================================
 
-const sendWithResend = async (mailOptions) => {
-    if (!RESEND_API_KEY) {
-        throw new Error('RESEND_API_KEY is missing from environment variables.');
+const sendWithBrevo = async (mailOptions) => {
+    if (!BREVO_API_KEY) {
+        throw new Error('BREVO_API_KEY is missing from environment variables.');
     }
 
+    const sender =
+        mailOptions.from && typeof mailOptions.from === 'object'
+            ? mailOptions.from
+            : parseSender(mailOptions.from);
+
+    const recipients = (Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to])
+        .filter(Boolean)
+        .map((email) => ({ email: String(email).trim() }));
+
     const emailData = {
-        from: mailOptions.from || RESEND_FROM_EMAIL,
-        to: Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to],
+        sender,
+        to: recipients,
         subject: mailOptions.subject,
-        html: mailOptions.html
+        htmlContent: mailOptions.html
     };
 
-    if (mailOptions.replyTo) emailData.replyTo = mailOptions.replyTo;
+    if (mailOptions.replyTo) {
+        emailData.replyTo =
+            typeof mailOptions.replyTo === 'object'
+                ? mailOptions.replyTo
+                : { email: String(mailOptions.replyTo).trim() };
+    }
 
     // Attachments
     if (Array.isArray(mailOptions.attachments) && mailOptions.attachments.length) {
@@ -86,13 +109,16 @@ const sendWithResend = async (mailOptions) => {
         for (const att of mailOptions.attachments) {
             try {
                 if (att.content) {
-                    processed.push({ filename: att.filename, content: att.content });
+                    const buf = Buffer.isBuffer(att.content)
+                        ? att.content
+                        : Buffer.from(att.content);
+                    processed.push({ name: att.filename, content: buf.toString('base64') });
                 } else if (att.path && /^https?:\/\//i.test(att.path)) {
-                    processed.push({ filename: att.filename, path: att.path });
+                    processed.push({ name: att.filename, url: att.path });
                 } else if (att.path && fs.existsSync(att.path)) {
                     processed.push({
-                        filename: att.filename,
-                        content: fs.readFileSync(att.path)
+                        name: att.filename,
+                        content: fs.readFileSync(att.path).toString('base64')
                     });
                 } else {
                     console.warn(`⚠️ Attachment skipped (file not found): ${att.path}`);
@@ -104,31 +130,63 @@ const sendWithResend = async (mailOptions) => {
                 );
             }
         }
-        if (processed.length) emailData.attachments = processed;
+        if (processed.length) emailData.attachment = processed;
     }
 
-    // Retry on rate limit (Resend allows ~2 req/sec)
-    let data, error;
+    // Retry on rate limit (HTTP 429)
+    let data = null;
+    let error = null;
+
     for (let attempt = 1; attempt <= 3; attempt++) {
-        ({ data, error } = await getResendClient().emails.send(emailData));
+        data = null;
+        error = null;
 
-        const rateLimited =
-            error &&
-            (error.statusCode === 429 || error.name === 'rate_limit_exceeded');
+        try {
+            const res = await fetch(BREVO_API_URL, {
+                method: 'POST',
+                headers: {
+                    accept: 'application/json',
+                    'content-type': 'application/json',
+                    'api-key': BREVO_API_KEY
+                },
+                body: JSON.stringify(emailData)
+            });
 
+            const text = await res.text();
+            let json = {};
+            try {
+                json = text ? JSON.parse(text) : {};
+            } catch {
+                json = { message: text };
+            }
+
+            if (res.ok) {
+                data = json;
+            } else {
+                error = {
+                    statusCode: res.status,
+                    code: json.code,
+                    message: json.message || `Brevo request failed with status ${res.status}`
+                };
+            }
+        } catch (networkErr) {
+            error = { message: networkErr.message };
+        }
+
+        const rateLimited = error && error.statusCode === 429;
         if (!rateLimited) break;
 
-        console.warn(`⚠️ Resend rate limit hit (attempt ${attempt}/3), retrying...`);
+        console.warn(`⚠️ Brevo rate limit hit (attempt ${attempt}/3), retrying...`);
         await new Promise((r) => setTimeout(r, 1000 * attempt));
     }
 
     if (error) {
-        console.error('❌ Resend API Error:', error);
+        console.error('❌ Brevo API Error:', error);
         throw new Error(error.message || JSON.stringify(error));
     }
 
-    console.log('✅ Resend email sent successfully:', data?.id);
-    return { ...(data || {}), messageId: data?.id };
+    console.log('✅ Brevo email sent successfully:', data?.messageId);
+    return { ...(data || {}), messageId: data?.messageId };
 };
 
 // ============================================================
@@ -452,7 +510,7 @@ const sendEmail = async (label, to, subject, layoutOptions, extra = {}) => {
             html: emailLayout(layoutOptions),
             ...extra
         };
-        const result = await sendWithResend(mailOptions);
+        const result = await sendWithBrevo(mailOptions);
         console.log(`✅ ${label} sent:`, result.messageId);
         return result;
     } catch (error) {
