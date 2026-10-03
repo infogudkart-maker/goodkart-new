@@ -1,5 +1,4 @@
 const fs = require('fs');
-const { getAdminConfig } = require('./adminConfigService');
 const { db, admin } = require('../../config/firebase');
 
 // ============================================================
@@ -10,6 +9,7 @@ const SITE_URL = 'https://www.goodkart.in';
 const siteLink = (routePath = '') => `${SITE_URL}/#${routePath}`;
 const CUSTOMER_DASHBOARD_URL = siteLink('/dashboard');
 const SELLER_DASHBOARD_URL = siteLink('/seller/dashboard');
+// Kept for backward compatibility; no longer used in the customer order confirmation email.
 const trackOrderUrl = (orderId) =>
     siteLink(`/track?orderId=${encodeURIComponent(orderId ?? '')}`);
 
@@ -40,7 +40,7 @@ if (!BREVO_API_KEY) {
 }
 
 // Sender must be a verified sender / authenticated domain in Brevo.
-const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'notification@goodakrt.in';
+const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'notification@goodkart.in';
 const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || BRAND_NAME;
 
 // Accepts "Name <email@x.com>" or "email@x.com"
@@ -62,14 +62,11 @@ const DEFAULT_SENDER = { name: BREVO_FROM_NAME, email: BREVO_FROM_EMAIL };
 // SENDER CONFIGURATION
 // ============================================================
 
-const getSenderConfig = async () => {
-    try {
-        const adminConfig = await getAdminConfig();
-        return { from: DEFAULT_SENDER, replyTo: adminConfig.email };
-    } catch {
-        return { from: DEFAULT_SENDER, replyTo: SUPPORT_EMAIL };
-    }
-};
+// Reply-To is ALWAYS the support email (info@ssinphinite.org).
+const getSenderConfig = async () => ({
+    from: DEFAULT_SENDER,
+    replyTo: SUPPORT_EMAIL
+});
 
 // ============================================================
 // BREVO EMAIL SENDER
@@ -543,10 +540,10 @@ exports.sendOrderConfirmation = async (email, order, invoicePath) => {
         ${shippingAddressBox(order)}
 
         ${p(invoicePath
-            ? 'Your official invoice is attached to this email. Use the button below to track your order.'
-            : 'Use the button below to track your order. You can download your invoice from your dashboard.', 'font-size:14px;')}
+            ? 'Your official invoice is attached to this email. Use the button below to open your customer dashboard.'
+            : 'Use the button below to open your customer dashboard. You can download your invoice from your customer dashboard.', 'font-size:14px;')}
 
-        ${button(trackOrderUrl(order.orderId), 'Track Order')}
+        ${button(CUSTOMER_DASHBOARD_URL, 'Go to Customer Dashboard')}
     `;
 
     return sendEmail(
@@ -590,7 +587,7 @@ exports.sendSellerNotification = async (sellerEmail, order, sellerItems) => {
     });
 
     const body = `
-        ${p('You have received a new order. Please prepare the following items for shipment.', 'font-size:16px;color:#1e293b;')}
+        ${p('A new order has been received. Please prepare the following items for shipment. The delivery partner will collect the package soon. Open your Seller Dashboard to view and manage this order.', 'font-size:16px;color:#1e293b;')}
 
         ${detailBox('Order Details', [
             ['Order ID', `#${esc(order.orderId)}`],
