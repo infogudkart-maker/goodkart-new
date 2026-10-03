@@ -2,6 +2,7 @@ const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
 const { PassThrough } = require('stream');
+
 const cloudinary = require('../../config/cloudinary');
 const { db, admin } = require('../../config/firebase');
 
@@ -15,7 +16,7 @@ const {
 
 
 // ============================================================
-// LOGO
+// GET GOODKART LOGO
 // ============================================================
 
 async function getLogoBase64() {
@@ -35,7 +36,7 @@ async function getLogoBase64() {
 
         return null;
     } catch (error) {
-        console.error('[INVOICE] Logo load error:', error.message);
+        console.error('[Invoice] Logo loading error:', error.message);
         return null;
     }
 }
@@ -47,46 +48,40 @@ async function getLogoBase64() {
 
 async function uploadToCloudinary(buffer, orderId) {
     return new Promise((resolve, reject) => {
-        try {
-            const uploadStream = cloudinary.uploader.upload_stream(
-                {
-                    resource_type: 'raw',
-                    public_id: `invoices/Invoice-${orderId}`,
-                    format: 'pdf',
-                    access_mode: 'public'
-                },
-                (error, result) => {
-                    if (error) {
-                        console.error(
-                            '[INVOICE] Cloudinary upload error:',
-                            error.message
-                        );
-
-                        return reject(error);
-                    }
-
-                    if (!result || !result.secure_url) {
-                        return reject(
-                            new Error(
-                                'Cloudinary upload completed but no secure URL was returned.'
-                            )
-                        );
-                    }
-
-                    console.log(
-                        `[INVOICE] Uploaded to Cloudinary: ${result.secure_url}`
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                resource_type: 'raw',
+                public_id: `invoices/Invoice-${orderId}`,
+                format: 'pdf',
+                access_mode: 'public'
+            },
+            (error, result) => {
+                if (error) {
+                    console.error(
+                        '[Invoice] Cloudinary upload error:',
+                        error
                     );
 
-                    resolve(result.secure_url);
+                    return reject(error);
                 }
-            );
 
-            uploadStream.on('error', reject);
+                if (!result || !result.secure_url) {
+                    return reject(
+                        new Error(
+                            'Cloudinary upload completed but no secure_url was returned.'
+                        )
+                    );
+                }
 
-            uploadStream.end(buffer);
-        } catch (error) {
-            reject(error);
-        }
+                console.log(
+                    `[Invoice] Uploaded to Cloudinary: ${result.secure_url}`
+                );
+
+                resolve(result.secure_url);
+            }
+        );
+
+        uploadStream.end(buffer);
     });
 }
 
@@ -95,28 +90,31 @@ async function uploadToCloudinary(buffer, orderId) {
 // GENERATE INVOICE
 //
 // IMPORTANT:
-// This function generates ONE PDF buffer.
+// This function generates the PDF ONLY ONCE.
 //
-// The same buffer is:
-// 1. Uploaded to Cloudinary
-// 2. Returned to orderController
-// 3. Attached directly to Brevo as Base64
+// It returns:
 //
-// Brevo DOES NOT download the invoice from Cloudinary.
+// {
+//     invoiceUrl: Cloudinary URL,
+//     pdfBuffer: exact same PDF buffer
+// }
+//
+// The caller can then:
+// 1. Save invoiceUrl in Firestore
+// 2. Attach pdfBuffer directly to Brevo
+//
 // ============================================================
 
 exports.generateInvoice = async (order) => {
     return new Promise(async (resolve, reject) => {
         try {
-            if (!order || !order.orderId) {
-                return reject(
-                    new Error('Order information or orderId is missing.')
-                );
-            }
-
             console.log(
-                `[INVOICE] Generating invoice for order: ${order.orderId}`
+                `[Invoice] Starting invoice generation for order: ${order.orderId}`
             );
+
+            // ----------------------------------------------------
+            // CREATE PDF DOCUMENT
+            // ----------------------------------------------------
 
             const doc = new PDFDocument({
                 margin: 30,
@@ -127,55 +125,48 @@ exports.generateInvoice = async (order) => {
             const buffers = [];
             const stream = new PassThrough();
 
-            let streamFinished = false;
-
             doc.pipe(stream);
 
+            // Collect PDF chunks in memory
             stream.on('data', (chunk) => {
                 buffers.push(chunk);
             });
 
-            stream.on('error', (error) => {
-                if (!streamFinished) {
-                    streamFinished = true;
-                    reject(error);
-                }
-            });
+            // ----------------------------------------------------
+            // PDF STREAM FINISHED
+            // ----------------------------------------------------
 
             stream.on('end', async () => {
-                if (streamFinished) return;
-
-                streamFinished = true;
-
                 try {
-                    // ====================================================
-                    // FINAL PDF BUFFER
-                    // ====================================================
-
+                    // Combine all PDF chunks into ONE Buffer
                     const pdfBuffer = Buffer.concat(buffers);
+
+                    console.log(
+                        `[Invoice] PDF generated successfully: ${pdfBuffer.length} bytes`
+                    );
 
                     if (!pdfBuffer || pdfBuffer.length === 0) {
                         throw new Error(
-                            'Generated invoice PDF buffer is empty.'
+                            'Generated PDF buffer is empty.'
                         );
                     }
 
-                    console.log(
-                        `[INVOICE] PDF generated successfully: ${pdfBuffer.length} bytes`
-                    );
-
-                    // ====================================================
-                    // UPLOAD SAME BUFFER TO CLOUDINARY
-                    // ====================================================
+                    // ------------------------------------------------
+                    // UPLOAD THE SAME BUFFER TO CLOUDINARY
+                    // ------------------------------------------------
 
                     const invoiceUrl = await uploadToCloudinary(
                         pdfBuffer,
                         order.orderId
                     );
 
-                    // ====================================================
-                    // SAVE INVOICE RECORD
-                    // ====================================================
+                    console.log(
+                        `[Invoice] Cloudinary upload successful for order ${order.orderId}`
+                    );
+
+                    // ------------------------------------------------
+                    // SAVE INVOICE INFORMATION IN FIRESTORE
+                    // ------------------------------------------------
 
                     const invoiceData = {
                         invoiceId: `INV-${Date.now()}`,
@@ -187,26 +178,26 @@ exports.generateInvoice = async (order) => {
                             admin.firestore.FieldValue.serverTimestamp()
                     };
 
-                    await db.collection('invoices').add(invoiceData);
+                    await db
+                        .collection('invoices')
+                        .add(invoiceData);
 
                     console.log(
-                        `[INVOICE] Invoice record saved for ${order.orderId}`
+                        `[Invoice] Invoice record saved in Firestore for order ${order.orderId}`
                     );
 
-                    // ====================================================
-                    // RETURN BOTH
-                    //
-                    // invoiceUrl = permanent Cloudinary copy
-                    // pdfBuffer  = exact PDF to attach to email
-                    // ====================================================
+                    // ------------------------------------------------
+                    // RETURN BOTH URL + SAME PDF BUFFER
+                    // ------------------------------------------------
 
                     resolve({
                         invoiceUrl,
                         pdfBuffer
                     });
+
                 } catch (err) {
                     console.error(
-                        `[INVOICE] Finalization error for ${order.orderId}:`,
+                        '[Invoice] Finalization error:',
                         err
                     );
 
@@ -214,23 +205,42 @@ exports.generateInvoice = async (order) => {
                 }
             });
 
+            // ----------------------------------------------------
+            // PDF ERROR HANDLING
+            // ----------------------------------------------------
+
             doc.on('error', (error) => {
-                if (!streamFinished) {
-                    streamFinished = true;
-                    reject(error);
-                }
+                console.error(
+                    '[Invoice] PDF document error:',
+                    error
+                );
+
+                reject(error);
             });
 
-            const getName = (addr) =>
-                addr
-                    ? `${addr.firstName || ''} ${addr.lastName || ''}`.trim()
-                    : 'Customer';
+            // ----------------------------------------------------
+            // CUSTOMER NAME HELPER
+            // ----------------------------------------------------
+
+            const getName = (addr) => {
+                if (!addr) {
+                    return 'Customer';
+                }
+
+                return `${addr.firstName || ''} ${addr.lastName || ''}`
+                    .trim() || 'Customer';
+            };
+
+            // ----------------------------------------------------
+            // LOAD LOGO
+            // ----------------------------------------------------
 
             const logoDataUrl = await getLogoBase64();
 
-            // ============================================================
+            // ====================================================
             // PAGE 1
-            // ============================================================
+            // BILL OF SUPPLY
+            // ====================================================
 
             doc.addPage();
 
@@ -243,9 +253,10 @@ exports.generateInvoice = async (order) => {
                 false
             );
 
-            // ============================================================
+            // ====================================================
             // PAGE 2
-            // ============================================================
+            // PLATFORM CHARGES
+            // ====================================================
 
             if (doc.bufferedPageRange().count === 1) {
                 doc.addPage();
@@ -260,14 +271,15 @@ exports.generateInvoice = async (order) => {
                 true
             );
 
-            // ============================================================
-            // FINISH PDF
-            // ============================================================
+            // ----------------------------------------------------
+            // FINALIZE PDF
+            // ----------------------------------------------------
 
             doc.end();
+
         } catch (error) {
             console.error(
-                `[INVOICE] Generation error for ${order?.orderId || 'unknown'}:`,
+                '[Invoice] Generation error:',
                 error
             );
 
@@ -325,35 +337,43 @@ async function renderPage(
 
     let y = 100;
 
-    // ============================================================
-    // SECTION HEADER
-    // ============================================================
+    // ========================================================
+    // BILL OF SUPPLY DETAILS
+    // ========================================================
 
     doc
         .fontSize(10)
         .font('Helvetica-Bold')
-        .text('BILL OF SUPPLY DETAILS', 30, y);
+        .text(
+            'BILL OF SUPPLY DETAILS',
+            30,
+            y
+        );
 
     y += 15;
 
-    // ============================================================
-    // DETAILS GRID
-    // ============================================================
-
+    // Bill number
     doc
         .fontSize(8)
         .font('Helvetica-Bold')
-        .text('Bill of Supply Number: ', 30, y, {
-            continued: true
-        })
+        .text(
+            'Bill of Supply Number: ',
+            30,
+            y,
+            { continued: true }
+        )
         .font('Helvetica')
         .text(order.orderId);
 
+    // Nature of transaction
     doc
         .font('Helvetica-Bold')
-        .text('Nature of transaction: ', 350, y, {
-            continued: true
-        })
+        .text(
+            'Nature of transaction: ',
+            350,
+            y,
+            { continued: true }
+        )
         .font('Helvetica')
         .text(
             String(
@@ -369,37 +389,49 @@ async function renderPage(
 
     y += 12;
 
+    // Date
     doc
         .font('Helvetica-Bold')
-        .text('Bill of Supply Date: ', 30, y, {
-            continued: true
-        })
+        .text(
+            'Bill of Supply Date: ',
+            30,
+            y,
+            { continued: true }
+        )
         .font('Helvetica')
         .text(orderDateStr(order));
 
+    // Nature of supply
     doc
         .font('Helvetica-Bold')
-        .text('Nature Of Supply: ', 350, y, {
-            continued: true
-        })
+        .text(
+            'Nature Of Supply: ',
+            350,
+            y,
+            { continued: true }
+        )
         .font('Helvetica')
         .text('Goods & Service');
 
     y += 12;
 
+    // Order number
     doc
         .font('Helvetica-Bold')
-        .text('Order Number: ', 30, y, {
-            continued: true
-        })
+        .text(
+            'Order Number: ',
+            30,
+            y,
+            { continued: true }
+        )
         .font('Helvetica')
         .text(order.orderId);
 
     y += 25;
 
-    // ============================================================
-    // BILLED FROM / TO
-    // ============================================================
+    // ========================================================
+    // BILLED FROM / BILLED TO
+    // ========================================================
 
     doc
         .fontSize(10)
@@ -410,16 +442,20 @@ async function renderPage(
 
     y += 15;
 
-    // ============================================================
+    // ========================================================
     // BILLED FROM
-    // ============================================================
+    // ========================================================
 
     const fromStart = y;
 
     doc
         .fontSize(9)
         .font('Helvetica-Bold')
-        .text(COMPANY_INFO.name, 30, y);
+        .text(
+            COMPANY_INFO.name,
+            30,
+            y
+        );
 
     y += 12;
 
@@ -427,21 +463,24 @@ async function renderPage(
         .fontSize(8)
         .font('Helvetica')
         .text(
-            `${COMPANY_INFO.addressLine1}\n${COMPANY_INFO.addressLine2}\n${COMPANY_INFO.addressLine3}`,
+            `${COMPANY_INFO.addressLine1}
+${COMPANY_INFO.addressLine2}
+${COMPANY_INFO.addressLine3}`,
             30,
             y,
-            {
-                width: 280
-            }
+            { width: 280 }
         );
 
     y += 30;
 
     doc
         .font('Helvetica-Bold')
-        .text('GSTIN: ', 30, y, {
-            continued: true
-        })
+        .text(
+            'GSTIN: ',
+            30,
+            y,
+            { continued: true }
+        )
         .font('Helvetica')
         .text(COMPANY_INFO.gstin);
 
@@ -449,17 +488,20 @@ async function renderPage(
 
     doc
         .font('Helvetica-Bold')
-        .text('PAN: ', 30, y, {
-            continued: true
-        })
+        .text(
+            'PAN: ',
+            30,
+            y,
+            { continued: true }
+        )
         .font('Helvetica')
         .text(COMPANY_INFO.pan);
 
     const fromEnd = y;
 
-    // ============================================================
+    // ========================================================
     // BILLED TO
-    // ============================================================
+    // ========================================================
 
     y = fromStart;
 
@@ -471,7 +513,11 @@ async function renderPage(
     doc
         .fontSize(9)
         .font('Helvetica-Bold')
-        .text(getName(bAddr), 350, y);
+        .text(
+            getName(bAddr),
+            350,
+            y
+        );
 
     y += 12;
 
@@ -479,14 +525,11 @@ async function renderPage(
         .fontSize(8)
         .font('Helvetica')
         .text(
-            `${bAddr.addressLine || 'N/A'}\n${bAddr.city || 'N/A'}, ${
-                bAddr.state || 'Karnataka'
-            } - ${bAddr.pincode || 'N/A'}`,
+            `${bAddr.addressLine || 'N/A'}
+${bAddr.city || 'N/A'}, ${bAddr.state || 'Karnataka'} - ${bAddr.pincode || 'N/A'}`,
             350,
             y,
-            {
-                width: 220
-            }
+            { width: 220 }
         );
 
     y += 20;
@@ -499,9 +542,12 @@ async function renderPage(
     if (gst) {
         doc
             .font('Helvetica-Bold')
-            .text('GSTIN: ', 350, y, {
-                continued: true
-            })
+            .text(
+                'GSTIN: ',
+                350,
+                y,
+                { continued: true }
+            )
             .font('Helvetica')
             .text(gst);
 
@@ -510,9 +556,12 @@ async function renderPage(
 
     doc
         .font('Helvetica-Bold')
-        .text('State Code: ', 350, y, {
-            continued: true
-        })
+        .text(
+            'State Code: ',
+            350,
+            y,
+            { continued: true }
+        )
         .font('Helvetica')
         .text('IN-KA');
 
@@ -520,21 +569,30 @@ async function renderPage(
 
     doc
         .font('Helvetica-Bold')
-        .text('Place of Supply: ', 350, y, {
-            continued: true
-        })
+        .text(
+            'Place of Supply: ',
+            350,
+            y,
+            { continued: true }
+        )
         .font('Helvetica')
         .text(
-            (bAddr.state || 'KARNATAKA').toUpperCase()
+            (
+                bAddr.state ||
+                'KARNATAKA'
+            ).toUpperCase()
         );
 
     const toEnd = y;
 
-    y = Math.max(fromEnd, toEnd) + 20;
+    y = Math.max(
+        fromEnd,
+        toEnd
+    ) + 20;
 
-    // ============================================================
-    // SHIPPING INFORMATION
-    // ============================================================
+    // ========================================================
+    // SHIPPING DETAILS
+    // ========================================================
 
     if (!isDetailed) {
         doc
@@ -548,33 +606,46 @@ async function renderPage(
         doc
             .fontSize(10)
             .font('Helvetica-Bold')
-            .text('SHIPPED FROM', 30, y);
+            .text(
+                'SHIPPED FROM',
+                30,
+                y
+            );
 
-        doc.text('SHIPPED TO', 350, y);
+        doc.text(
+            'SHIPPED TO',
+            350,
+            y
+        );
 
         y += 15;
 
-        const sFromAddr = order.sellerAddress || {};
+        const sFromAddr =
+            order.sellerAddress || {};
 
         doc
             .fontSize(8)
             .font('Helvetica')
             .text(
-                `Survey No. 48, 486, 487, 488... Kotur Dharwad Dist.\nKarnataka - 580011, IN-KA`,
+                `Survey No. 48, 486, 487, 488... Kotur Dharwad Dist.
+Karnataka - 580011, IN-KA`,
                 30,
                 y,
-                {
-                    width: 280
-                }
+                { width: 280 }
             );
 
         const sToAddr =
-            order.shippingAddress || bAddr;
+            order.shippingAddress ||
+            bAddr;
 
         doc
             .fontSize(9)
             .font('Helvetica-Bold')
-            .text(getName(sToAddr), 350, y);
+            .text(
+                getName(sToAddr),
+                350,
+                y
+            );
 
         y += 12;
 
@@ -582,14 +653,11 @@ async function renderPage(
             .fontSize(8)
             .font('Helvetica')
             .text(
-                `${sToAddr.addressLine || 'N/A'}\n${
-                    sToAddr.city || 'N/A'
-                }, ${sToAddr.state || 'Karnataka'}, IN-KA`,
+                `${sToAddr.addressLine || 'N/A'}
+${sToAddr.city || 'N/A'}, ${sToAddr.state || 'Karnataka'}, IN-KA`,
                 350,
                 y,
-                {
-                    width: 220
-                }
+                { width: 220 }
             );
 
         y += 45;
@@ -601,6 +669,7 @@ async function renderPage(
             .stroke('#000000');
 
         y += 15;
+
     } else {
         y += 5;
 
@@ -613,15 +682,27 @@ async function renderPage(
         y += 15;
     }
 
-    // ============================================================
-    // TABLE
-    // ============================================================
+    // ========================================================
+    // ITEMS / PLATFORM TABLE
+    // ========================================================
 
     if (isDetailed) {
-        y = renderPlatformTable(doc, order, y);
+        y = renderPlatformTable(
+            doc,
+            order,
+            y
+        );
     } else {
-        y = renderItemsTable(doc, order, y);
+        y = renderItemsTable(
+            doc,
+            order,
+            y
+        );
     }
+
+    // ========================================================
+    // FOOTER
+    // ========================================================
 
     renderFooter(
         doc,
@@ -654,7 +735,11 @@ function renderHeader(
     doc
         .fontSize(12)
         .font('Helvetica')
-        .text(`#${orderId}`, 30, 65);
+        .text(
+            `#${orderId}`,
+            30,
+            65
+        );
 
     if (logoDataUrl) {
         try {
@@ -667,13 +752,11 @@ function renderHeader(
                 logoBuffer,
                 410,
                 22,
-                {
-                    width: 45
-                }
+                { width: 45 }
             );
         } catch (e) {
             console.warn(
-                '[INVOICE] Could not render logo:',
+                '[Invoice] Could not render logo:',
                 e.message
             );
         }
@@ -687,9 +770,7 @@ function renderHeader(
             'Good',
             460,
             30,
-            {
-                continued: true
-            }
+            { continued: true }
         );
 
     doc
@@ -724,7 +805,11 @@ function renderHeader(
 // ITEMS TABLE
 // ============================================================
 
-function renderItemsTable(doc, order, y) {
+function renderItemsTable(
+    doc,
+    order,
+    y
+) {
     const cols = [
         30,
         210,
@@ -739,7 +824,12 @@ function renderItemsTable(doc, order, y) {
     doc
         .fontSize(7)
         .font('Helvetica-Bold')
-        .rect(30, y, 535, 20)
+        .rect(
+            30,
+            y,
+            535,
+            20
+        )
         .fill('#f9fafb')
         .stroke('#000000');
 
@@ -758,93 +848,107 @@ function renderItemsTable(doc, order, y) {
 
     let tGross = 0;
 
-    (order.items || []).forEach((item) => {
-        const qty = item.quantity || 1;
+    (order.items || []).forEach(
+        (item) => {
+            const qty =
+                item.quantity || 1;
 
-        const price = getItemPriceWithGST(item);
+            const price =
+                getItemPriceWithGST(item);
 
-        const gst =
-            item.gstPercent === 0
-                ? 0
-                : item.gstPercent || 18;
+            const gst =
+                item.gstPercent === 0
+                    ? 0
+                    : item.gstPercent || 18;
 
-        const taxable =
-            (price / (1 + gst / 100)) * qty;
+            const taxable =
+                price /
+                (1 + gst / 100) *
+                qty;
 
-        const gross =
-            price * qty;
+            const gross =
+                price * qty;
 
-        tGross += gross;
+            tGross += gross;
 
-        doc
-            .fontSize(7)
-            .font('Helvetica')
-            .rect(30, y, 535, 25)
-            .stroke('#000000');
+            doc
+                .fontSize(7)
+                .font('Helvetica')
+                .rect(
+                    30,
+                    y,
+                    535,
+                    25
+                )
+                .stroke('#000000');
 
-        doc.text(
-            item.name || 'Product',
-            35,
-            y + 5,
-            {
-                width: 170
-            }
-        );
-
-        doc
-            .fontSize(6)
-            .fillColor('#666666')
-            .text(
-                `SAC: 996511 | GST ${gst}%`,
+            doc.text(
+                item.name || 'Product',
                 35,
-                y + 15
+                y + 5,
+                { width: 170 }
             );
 
-        doc
-            .fillColor('#000000')
-            .fontSize(7)
-            .text(
-                '996511',
-                cols[1],
-                y + 10
-            )
-            .text(
-                qty.toFixed(1),
-                cols[2],
-                y + 10
-            )
-            .text(
-                `₹${gross.toFixed(2)}`,
-                cols[3],
-                y + 10
-            )
-            .text(
-                `₹${taxable.toFixed(2)}`,
-                cols[4],
-                y + 10
-            )
-            .text(
-                `₹${((gross - taxable) / 2).toFixed(2)}`,
-                cols[5],
-                y + 10
-            )
-            .text(
-                `₹${((gross - taxable) / 2).toFixed(2)}`,
-                cols[6],
-                y + 10
-            )
-            .font('Helvetica-Bold')
-            .text(
-                `₹${gross.toFixed(2)}`,
-                cols[7],
-                y + 10
-            );
+            doc
+                .fontSize(6)
+                .fillColor('#666666')
+                .text(
+                    `SAC: 996511 | GST ${gst}%`,
+                    35,
+                    y + 15
+                );
 
-        y += 25;
-    });
+            doc
+                .fillColor('#000000')
+                .fontSize(7)
+                .text(
+                    '996511',
+                    cols[1],
+                    y + 10
+                )
+                .text(
+                    qty.toFixed(1),
+                    cols[2],
+                    y + 10
+                )
+                .text(
+                    `₹${gross.toFixed(2)}`,
+                    cols[3],
+                    y + 10
+                )
+                .text(
+                    `₹${taxable.toFixed(2)}`,
+                    cols[4],
+                    y + 10
+                )
+                .text(
+                    `₹${((gross - taxable) / 2).toFixed(2)}`,
+                    cols[5],
+                    y + 10
+                )
+                .text(
+                    `₹${((gross - taxable) / 2).toFixed(2)}`,
+                    cols[6],
+                    y + 10
+                )
+                .font('Helvetica-Bold')
+                .text(
+                    `₹${gross.toFixed(2)}`,
+                    cols[7],
+                    y + 10
+                );
+
+            y += 25;
+        }
+    );
 
     doc
-        .rect(30, y, 535, 20)
+        .rect(
+            30,
+            y,
+            535,
+            20
+        )
         .fill('#f3f4f6')
         .stroke('#000000')
         .fillColor('#000000')
@@ -868,7 +972,11 @@ function renderItemsTable(doc, order, y) {
 // PLATFORM TABLE
 // ============================================================
 
-function renderPlatformTable(doc, order, y) {
+function renderPlatformTable(
+    doc,
+    order,
+    y
+) {
     const cols = [
         30,
         210,
@@ -882,7 +990,12 @@ function renderPlatformTable(doc, order, y) {
     doc
         .fontSize(7)
         .font('Helvetica-Bold')
-        .rect(30, y, 535, 20)
+        .rect(
+            30,
+            y,
+            535,
+            20
+        )
         .fill('#f9fafb')
         .stroke('#000000');
 
@@ -900,20 +1013,22 @@ function renderPlatformTable(doc, order, y) {
 
     let tTaxable = 0;
 
-    (order.items || []).forEach((i) => {
-        tTaxable +=
-            getItemPriceWithGST(i) /
-            (
-                1 +
+    (order.items || []).forEach(
+        (i) => {
+            tTaxable +=
+                getItemPriceWithGST(i) /
                 (
-                    i.gstPercent === 0
-                        ? 0
-                        : i.gstPercent || 18
-                ) /
-                    100
-            ) *
-            (i.quantity || 1);
-    });
+                    1 +
+                    (
+                        i.gstPercent === 0
+                            ? 0
+                            : i.gstPercent || 18
+                    ) /
+                        100
+                ) *
+                (i.quantity || 1);
+        }
+    );
 
     const orderFeePercent =
         sumFeePercent(
@@ -921,13 +1036,23 @@ function renderPlatformTable(doc, order, y) {
         ) || 3.5;
 
     const pfBase =
-        order.effectivePlatformFee !== null &&
-        order.effectivePlatformFee !== undefined &&
-        !isNaN(
-            Number(order.effectivePlatformFee)
+        (
+            order.effectivePlatformFee !== null &&
+            order.effectivePlatformFee !== undefined &&
+            !isNaN(
+                Number(
+                    order.effectivePlatformFee
+                )
+            )
         )
-            ? Number(order.effectivePlatformFee)
-            : (tTaxable * orderFeePercent) / 100;
+            ? Number(
+                order.effectivePlatformFee
+            )
+            : (
+                tTaxable *
+                orderFeePercent /
+                100
+            );
 
     const pfTotal =
         pfBase * 1.18;
@@ -935,7 +1060,12 @@ function renderPlatformTable(doc, order, y) {
     doc
         .fontSize(7)
         .font('Helvetica')
-        .rect(30, y, 535, 25)
+        .rect(
+            30,
+            y,
+            535,
+            25
+        )
         .stroke('#000000')
         .text(
             'Platform Service Fee',
@@ -992,7 +1122,12 @@ function renderPlatformTable(doc, order, y) {
         order.couponDiscount || 0;
 
     doc
-        .rect(30, y, 535, 20)
+        .rect(
+            30,
+            y,
+            535,
+            20
+        )
         .fill('#f3f4f6')
         .stroke('#000000')
         .fillColor('#000000')
@@ -1020,13 +1155,22 @@ function renderPlatformTable(doc, order, y) {
 // FOOTER
 // ============================================================
 
-function renderFooter(doc, order, y) {
+function renderFooter(
+    doc,
+    order,
+    y
+) {
     const paid =
         order.paymentStatus === 'Completed' ||
         order.paymentStatus === 'Collected';
 
     doc
-        .rect(30, y, 535, 40)
+        .rect(
+            30,
+            y,
+            535,
+            40
+        )
         .fill(
             paid
                 ? '#f0fdf4'
@@ -1068,7 +1212,9 @@ function renderFooter(doc, order, y) {
                 : '#d97706'
         )
         .text(
-            paid ? 'PAID' : 'PENDING',
+            paid
+                ? 'PAID'
+                : 'PENDING',
             450,
             y + 22
         );
@@ -1102,7 +1248,12 @@ function renderFooter(doc, order, y) {
         );
 
     doc
-        .rect(500, y, 60, 60)
+        .rect(
+            500,
+            y,
+            60,
+            60
+        )
         .stroke('#000000')
         .text(
             'QR',
