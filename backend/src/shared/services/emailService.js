@@ -40,7 +40,7 @@ if (!BREVO_API_KEY) {
 }
 
 // Sender must be a verified sender / authenticated domain in Brevo.
-const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'notification@goodsynk.com';
+const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'notification@goodakrt.in';
 const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || BRAND_NAME;
 
 // Accepts "Name <email@x.com>" or "email@x.com"
