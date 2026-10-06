@@ -1727,3 +1727,24 @@
     height: 16px !important;
   }
 }
+
+/* ============================================
+   FOOTER - "Developed & Maintained by ..." stays on ONE line on mobile
+   (font scales with the screen width so the whole sentence always fits)
+   ============================================ */
+@media (max-width: 768px) {
+  .footer-developed {
+    flex-wrap: nowrap !important;
+    justify-content: center !important;
+    width: 100%;
+    gap: 0.25em !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+  }
+
+  .footer-developed > span {
+    font-size: clamp(0.5rem, 2.7vw, 0.8rem) !important;
+    white-space: nowrap !important;
+    flex-shrink: 0;
+  }
+}
