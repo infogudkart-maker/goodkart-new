@@ -243,7 +243,7 @@
     padding-bottom: 3px;
     justify-content: flex-start;
     flex-wrap: nowrap;
-    overflow-x: hidden;
+    overflow-x: clip;
     overflow-y: visible;
 }
 
@@ -404,6 +404,35 @@
 }
 
 @media (max-width: 768px) {
+    /* Mobile category bar: one tidy line (All + as many categories as fit + "More").
+       The rest of the categories open in the "More" panel below, same as the main page. */
+    .sub-nav-row-1 {
+        overflow-x: clip;
+        overflow-y: visible;
+        flex-wrap: nowrap;
+    }
+    .sub-nav-row-1 .sub-nav-item,
+    .sub-nav-row-1 .sub-nav-link {
+        flex-shrink: 0;
+    }
+    /* "More" panel: categories wrap onto as many lines as needed */
+    .sub-nav-row-2 {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 0.25rem;
+        max-height: 50vh;
+        overflow-y: auto;
+    }
+    /* Special links (Today's Deals / New Arrivals / Trending) stay on one tidy row */
+    .sub-nav-row-3 {
+        flex-wrap: nowrap;
+        justify-content: center;
+        gap: 0.4rem;
+    }
+    .sub-nav-row-3 .sub-nav-link.special-category {
+        font-size: 12px;
+        padding: 6px 10px;
+    }
     .sub-nav {
         gap: 0.15rem;
         padding: 4px 0;
@@ -838,6 +867,12 @@
     border-radius: var(--radius-full, 9999px); 
     font-size: var(--text-sm, 14px); 
     transition: all var(--transition-base, 200ms); 
+}
+/* Reserve space for the magnifier so it never sits on top of the placeholder/typed text.
+   Uses the sibling selector (higher specificity than the global `input` padding rule). */
+.nav-search .search-icon-btn + input {
+    box-sizing: border-box;
+    padding-left: 48px;
 }
 .nav-search input:focus { 
     border-color: var(--primary); 

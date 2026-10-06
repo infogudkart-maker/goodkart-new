@@ -6,6 +6,39 @@ const invoiceService = require('../../../shared/services/invoiceService');
 const emailService = require('../../../shared/services/emailService');
 const shiprocketService = require('../../../shared/services/shiprocketService');
 const { reduceStock } = require('../../../utils/stockUtils');
+const cache = require('../../../utils/cache');
+
+/**
+ * Resolve the buyer's account name (not the shipping-address name) for emails.
+ */
+const resolveAccountName = async (uid, fallback = 'Customer') => {
+    if (uid && uid !== 'guest') {
+        try {
+            const userDoc = await db.collection('users').doc(uid).get();
+            if (userDoc.exists) {
+                const d = userDoc.data() || {};
+                const n = (d.fullName || d.name || '').trim();
+                if (n) return n;
+            }
+        } catch (err) {
+            console.error('[Background] users name lookup failed:', err.message);
+        }
+        try {
+            const authUser = await admin.auth().getUser(uid);
+            if (authUser?.displayName && authUser.displayName.trim()) return authUser.displayName.trim();
+        } catch (err) {
+            console.error('[Background] auth name lookup failed:', err.message);
+        }
+    }
+    return fallback;
+};
+
+/** Clear cached order lists so a new order shows up immediately in dashboards. */
+const invalidateOrderCaches = (uid) => {
+    if (uid) cache.invalidate(`userOrders_${uid}`);
+    cache.invalidate('adminAllOrders');
+    cache.invalidatePrefix('adminStats');
+};
 
 /**
  * Handle Razorpay order creation.
@@ -45,7 +78,8 @@ const processPostOrderTasks = async (orderData, orderRef) => {
 
         // 2. Send emails - customer confirmation and seller notification are independent
         if (orderData.email) {
-            emailService.sendOrderConfirmation(orderData.email, { ...orderData, documentId: orderRef.id }, invoiceUrl)
+            const accountName = await resolveAccountName(orderData.userId, orderData.customerName || 'Customer');
+            emailService.sendOrderConfirmation(orderData.email, { ...orderData, customerName: accountName, documentId: orderRef.id }, invoiceUrl)
                 .catch(err => console.error('[Background] Confirmation email error:', err));
         } else {
             console.warn(`[Background] No customer email on order ${orderData.orderId}`);
@@ -119,6 +153,7 @@ const verifyPayment = async (req, res) => {
         };
 
         const orderRef = await db.collection("orders").add(orderData);
+        invalidateOrderCaches(orderData.userId);
 
         // START BACKGROUND TASKS - use setImmediate for true non-blocking
         setImmediate(() => processPostOrderTasks(orderData, orderRef));
@@ -163,6 +198,7 @@ const codOrder = async (req, res) => {
         };
 
         const orderRef = await db.collection("orders").add(orderData);
+        invalidateOrderCaches(orderData.userId);
 
         // START BACKGROUND TASKS - use setImmediate for true non-blocking
         setImmediate(() => processPostOrderTasks(orderData, orderRef));

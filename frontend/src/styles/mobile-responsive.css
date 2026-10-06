@@ -119,11 +119,20 @@
     padding-left: 48px;
   }
 
+  /* Same sibling-selector specificity as Navbar.css so the left padding is never
+     overridden and the magnifier can't overlap the placeholder text. */
+  /* NOTE: a global mobile rule further down ("input { padding: 12px !important }")
+     was overriding every padding set for the search box, which is what made the
+     magnifier sit on top of the placeholder text. !important + higher specificity wins. */
+  .main-nav .nav-search .search-icon-btn + input {
+    padding: 0 40px 0 46px !important;
+  }
+
   /* Icon button itself defaults to left:6px/32px wide from Navbar.css (ends at
      38px) which left too little breathing room versus the placeholder text at
      this width; nudge it in slightly and shrink to match the smaller input. */
   .main-nav .search-icon-btn {
-    left: 4px;
+    left: 8px;
     width: 28px;
     height: 28px;
   }
@@ -1410,5 +1419,311 @@
     min-width: 0 !important;
     width: 100% !important;
     flex: 1 1 140px !important;
+  }
+}
+
+
+/* ============================================
+   MOBILE RESPONSIVE FIXES (v2)
+   Appended block - keeps every page usable on phones:
+   no overlap, no sideways scroll, readable text, tappable controls.
+   ============================================ */
+
+/* ---- Order tracking page (Back to Shopping / Track Order / grid) ---- */
+.tracking-page {
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
+}
+
+@media (max-width: 1024px) {
+  .tracking-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 1.5rem !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .tracking-page {
+    padding: 1.5rem 1rem !important;
+  }
+
+  .tracking-page h1 {
+    font-size: 1.6rem !important;
+  }
+
+  .tracking-page .glass-card {
+    padding: 1.25rem !important;
+  }
+
+  /* Order ID / AWB header row stacks instead of squeezing */
+  .tracking-page .glass-card > div:first-child {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+}
+
+/* ---- Dashboard sidebar: no sticky / viewport-height trap on phones ---- */
+@media (max-width: 1023px) {
+  .dash-sidebar-card {
+    position: static !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
+
+/* ---- Inline-styled grids (set from JSX) collapse on phones ---- */
+@media (max-width: 768px) {
+  /* two-column / sidebar layouts -> single column */
+  [style*="grid-template-columns: 1fr 1fr"]:not([style*="auto-fit"]):not([style*="auto-fill"]),
+  [style*="grid-template-columns: 1.5fr 1fr"],
+  [style*="grid-template-columns: 340px 1fr"],
+  [style*="grid-template-columns: repeat(2, 1fr)"],
+  [style*="grid-template-columns: repeat(3, 1fr)"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* four-up stat rows -> two columns */
+  [style*="grid-template-columns: repeat(4, 1fr)"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  /* wide fixed-column "table" rows scroll inside their own box */
+  [style*="grid-template-columns: 2fr 1fr 1fr 1fr 80px"],
+  [style*="grid-template-columns: 1.5fr 1fr 1fr 1fr"] {
+    min-width: 560px;
+  }
+}
+
+/* ---- Global safeguards ---- */
+@media (max-width: 768px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* grid / flex children may shrink instead of pushing the page wider */
+  .container > *,
+  [class*="grid"] > *,
+  [style*="display: grid"] > *,
+  [style*="display: flex"] > * {
+    min-width: 0;
+  }
+
+  /* long words, emails, order IDs, URLs wrap instead of overflowing */
+  h1, h2, h3, h4, h5, h6, p, span, a, li, td, th, label {
+    overflow-wrap: break-word;
+  }
+
+  img,
+  video,
+  svg,
+  canvas,
+  iframe {
+    max-width: 100%;
+  }
+
+  img,
+  video {
+    height: auto;
+  }
+
+  /* 16px inputs stop iOS from zooming in on focus and keep fields on-screen */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+    max-width: 100%;
+  }
+
+  /* modals / popups never exceed the screen */
+  .modal,
+  .modal-content,
+  [role="dialog"] {
+    max-width: calc(100vw - 24px) !important;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  /* hero buttons stack neatly */
+  .hero-btns {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100%;
+  }
+
+  .hero-btns .btn-modern {
+    justify-content: center;
+    width: 100%;
+    padding: 12px 20px !important;
+    font-size: 0.95rem !important;
+  }
+
+  /* order status stepper (Ordered / Packing / Shipping / ...) */
+  .tracking-page .relative.flex.justify-between span {
+    font-size: 0.7rem !important;
+    max-width: 64px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .tracking-page h1 {
+    font-size: 1.35rem !important;
+  }
+
+  .container {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  .tracking-page {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+}
+
+
+/* ============================================
+   UNIFORM PRODUCT CARDS ON MOBILE
+   (Home sections, New Arrivals, Trending, Deals)
+   Every card gets the same width (equal minmax(0,1fr) columns) and the
+   same fixed height, with fixed-height slots for each part of the card,
+   so long names / prices / "No reviews yet" can never stretch, wrap
+   over or push a card out of line with its neighbours.
+   Scoped to these grids so the Product Listing page keeps its own layout.
+   ============================================ */
+@media (max-width: 768px) {
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 300px !important;
+    min-height: 300px !important;
+    max-height: 300px !important;
+    padding: 8px !important;
+    overflow: hidden !important;
+  }
+
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium .card-media {
+    height: 130px !important;
+    min-height: 130px !important;
+    max-height: 130px !important;
+    flex: 0 0 130px !important;
+    padding: 4px !important;
+    margin-bottom: 8px !important;
+  }
+
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium .card-media img {
+    object-fit: contain !important;
+  }
+
+  /* Card body (Home uses .card-info, the other pages use .product-details) */
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium :is(.card-info, .product-details) {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Category label: one line */
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium :is(.category-row, .p-cat) {
+    height: 14px !important;
+    min-height: 14px !important;
+    margin-bottom: 3px !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+  }
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium :is(.category, .p-cat) {
+    font-size: 9px !important;
+    line-height: 14px !important;
+  }
+
+  /* Name: always exactly two lines of space */
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium :is(h3.title, .title, .p-name) {
+    font-size: 0.78rem !important;
+    line-height: 1.25 !important;
+    height: 2.5em !important;
+    min-height: 2.5em !important;
+    max-height: 2.5em !important;
+    margin: 0 0 6px !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    word-break: break-word !important;
+  }
+
+  /* Rating: one line, never wraps over the price */
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium :is(.rating-row, .p-rating) {
+    height: 16px !important;
+    min-height: 16px !important;
+    max-height: 16px !important;
+    margin-bottom: 4px !important;
+    gap: 4px !important;
+    flex-wrap: nowrap !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+  }
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium :is(.rating-row, .p-rating) * {
+    white-space: nowrap !important;
+    font-size: 0.62rem !important;
+    flex-shrink: 0;
+  }
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium :is(.rating-row, .p-rating) svg {
+    width: 11px !important;
+    height: 11px !important;
+  }
+
+  /* Footer: fixed height; price may use two lines (price / old price + badge) */
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium :is(.info-bottom, .p-footer) {
+    height: 56px !important;
+    min-height: 56px !important;
+    max-height: 56px !important;
+    margin-top: auto !important;
+    padding-top: 6px !important;
+    gap: 6px !important;
+    align-items: center !important;
+    overflow: hidden !important;
+  }
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium :is(.price-info-stack, .price-group, .p-price-group) {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    gap: 2px !important;
+  }
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium .price-row {
+    flex-wrap: wrap !important;
+    row-gap: 2px !important;
+    column-gap: 4px !important;
+    overflow: hidden !important;
+  }
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium .old-price {
+    font-size: 0.68rem !important;
+  }
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium .discount-badge-standard {
+    font-size: 0.6rem !important;
+    padding: 0.1rem 0.3rem !important;
+  }
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium .add-to-cart-simple {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    flex-shrink: 0 !important;
+  }
+  :is(.product-uniform-grid, .new-grid, .trending-grid, .deals-grid) .product-card-premium .add-to-cart-simple svg {
+    width: 16px !important;
+    height: 16px !important;
   }
 }

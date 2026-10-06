@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { Sparkles, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Sparkles, ArrowRight } from 'lucide-react';
 
 const HERO_SLIDES = [
     {
@@ -88,15 +88,6 @@ export default function HeroCarousel() {
                             </Link>
                             <Link to="/products" className="btn-modern btn-outline">Explore Brands</Link>
                         </motion.div>
-                    </div>
-
-                    <div className="carousel-nav">
-                        <button className="nav-btn" onClick={() => setCurrentSlide(prev => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)}>
-                            <ChevronLeft size={24} />
-                        </button>
-                        <button className="nav-btn" onClick={() => setCurrentSlide(prev => (prev + 1) % HERO_SLIDES.length)}>
-                            <ChevronRight size={24} />
-                        </button>
                     </div>
 
                     <div className="carousel-dots">
