@@ -503,6 +503,7 @@ export default function Footer() {
 
                             {/* Developed & Maintained - Right Side */}
                             <div
+                                className="footer-developed"
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
