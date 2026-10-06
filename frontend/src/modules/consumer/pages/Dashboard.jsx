@@ -508,7 +508,7 @@ export default function ConsumerDashboard() {
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6" style={{ alignItems: 'start' }}>
                     {/* Sidebar */}
                     <div className="lg:col-span-1">
-                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-y-auto" style={{ position: 'sticky', top: '24px', maxHeight: 'calc(100vh - 48px)' }}>
+                        <div className="dash-sidebar-card bg-white rounded-lg shadow-sm border border-gray-200 overflow-y-auto" style={{ position: 'sticky', top: '24px', maxHeight: 'calc(100vh - 48px)' }}>
                             {/* User Profile */}
                             <div className="p-4 bg-gradient-to-r from-blue-50 to-blue-50 border-b border-gray-200">
                                 <div className="flex flex-col items-center text-center">

@@ -18,7 +18,7 @@ const fs = require('fs');
 
 
 
-const ORDERS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+const ORDERS_CACHE_TTL = 120; // 2 minutes (cache util expects seconds)
 
 
 

@@ -157,7 +157,7 @@ export default function OrderTracking() {
 
     if (loading) {
         return (
-            <div className="container" style={{ padding: '4rem 0', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="container" style={{ padding: '4rem 1.5rem', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
             </div>
         );
@@ -165,7 +165,7 @@ export default function OrderTracking() {
 
     if (!orderId) {
         return (
-            <div className="container" style={{ padding: '4rem 0', minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.5rem' }}>
+            <div className="container" style={{ padding: '4rem 1.5rem', minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.5rem' }}>
                 <Package size={64} className="text-gray-300" />
                 <div style={{ textAlign: 'center' }}>
                     <h2 style={{ marginBottom: '0.5rem' }}>Track Your Order</h2>
@@ -198,7 +198,7 @@ export default function OrderTracking() {
 
     if (!order) {
         return (
-            <div className="container" style={{ padding: '4rem 0', minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
+            <div className="container" style={{ padding: '4rem 1.5rem', minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
                 <Package size={64} className="text-gray-300" />
                 <h2>Order not found</h2>
                 <p className="text-muted" style={{ fontSize: '0.9rem' }}>We couldn't find an order matching "{orderId}".</p>
@@ -217,7 +217,7 @@ export default function OrderTracking() {
     const canCancel = order.status !== 'Cancelled' && order.status !== 'Delivered' && cancellableStatuses.includes(order.status);
 
     return (
-        <div className="container animate-fade-in" style={{ padding: '4rem 0', minHeight: '80vh' }}>
+        <div className="container animate-fade-in tracking-page" style={{ padding: '4rem 1.5rem', minHeight: '80vh' }}>
             <div className="flex justify-between items-center" style={{ marginBottom: '3rem' }}>
                 <div className="flex flex-col gap-2">
                     <button
@@ -233,7 +233,7 @@ export default function OrderTracking() {
 
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2.5rem' }}>
+            <div className="tracking-grid" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2.5rem' }}>
                 {/* Tracking Timeline */}
                 <div className="glass-card" style={{ padding: '2.5rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
