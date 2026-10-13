@@ -623,12 +623,18 @@ ${bAddr.city || 'N/A'}, ${bAddr.state || 'Karnataka'} - ${bAddr.pincode || 'N/A'
         const sFromAddr =
             order.sellerAddress || {};
 
+        const sellerAddrLine = [
+            order.businessName,
+            sFromAddr.addressLine,
+            sFromAddr.city,
+            sFromAddr.state ? `${sFromAddr.state} - ${sFromAddr.pincode || ''}` : sFromAddr.pincode
+        ].filter(Boolean).join('\n');
+
         doc
             .fontSize(8)
             .font('Helvetica')
             .text(
-                `Survey No. 48, 486, 487, 488... Kotur Dharwad Dist.
-Karnataka - 580011, IN-KA`,
+                sellerAddrLine || `Survey No. 48, 486, 487, 488... Kotur Dharwad Dist.\nKarnataka - 580011, IN-KA`,
                 30,
                 y,
                 { width: 280 }
