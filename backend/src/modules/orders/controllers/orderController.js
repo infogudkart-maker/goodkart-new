@@ -12,6 +12,8 @@ const { reduceStock, replenishStock } = require('../../../utils/stockUtils');
 
 const shiprocketService = require('../../../shared/services/shiprocketService');
 
+const { resolveSellerDetails } = require('../../../utils/sellerAddressHelper');
+
 const path = require('path');
 
 const fs = require('fs');
@@ -228,6 +230,13 @@ const placeOrder = async (req, res) => {
 
 
         // ----------------------------------------------------
+        // Resolve dynamic seller details (warehouse & pickup)
+        // ----------------------------------------------------
+
+        const sellerId = orderData.sellerId || (orderData.items || []).find(i => i?.sellerId)?.sellerId || null;
+        const sellerDetails = await resolveSellerDetails(sellerId, orderData.items);
+
+        // ----------------------------------------------------
         // Create order
         // ----------------------------------------------------
 
@@ -236,6 +245,21 @@ const placeOrder = async (req, res) => {
             .add({
 
                 ...orderData,
+
+                sellerId:
+                    sellerDetails.sellerId || sellerId,
+
+                sellerAddress:
+                    orderData.sellerAddress || sellerDetails.sellerAddress,
+
+                sellerPhone:
+                    orderData.sellerPhone || sellerDetails.sellerPhone,
+
+                sellerEmail:
+                    orderData.sellerEmail || sellerDetails.sellerEmail,
+
+                businessName:
+                    orderData.businessName || sellerDetails.businessName,
 
                 userId: uid,
 
@@ -276,6 +300,21 @@ const placeOrder = async (req, res) => {
         const fullOrder = {
 
             ...orderData,
+
+            sellerId:
+                sellerDetails.sellerId || sellerId,
+
+            sellerAddress:
+                orderData.sellerAddress || sellerDetails.sellerAddress,
+
+            sellerPhone:
+                orderData.sellerPhone || sellerDetails.sellerPhone,
+
+            sellerEmail:
+                orderData.sellerEmail || sellerDetails.sellerEmail,
+
+            businessName:
+                orderData.businessName || sellerDetails.businessName,
 
             orderId:
                 orderData.orderId ||

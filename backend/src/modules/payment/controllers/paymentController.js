@@ -6,6 +6,7 @@ const invoiceService = require('../../../shared/services/invoiceService');
 const emailService = require('../../../shared/services/emailService');
 const shiprocketService = require('../../../shared/services/shiprocketService');
 const { reduceStock } = require('../../../utils/stockUtils');
+const { resolveSellerDetails } = require('../../../utils/sellerAddressHelper');
 
 /**
  * Handle Razorpay order creation.
@@ -97,16 +98,20 @@ const verifyPayment = async (req, res) => {
 
         const orderId = "OD" + Date.now();
         const sellerId = (cartItems || []).find(i => i?.sellerId)?.sellerId || null;
+        const sellerDetails = await resolveSellerDetails(sellerId, cartItems);
 
         const orderData = {
-            orderId, userId: uid || "guest", sellerId,
+            orderId, userId: uid || "guest", sellerId: sellerDetails.sellerId || sellerId,
             customerName: `${customerInfo?.firstName || ""} ${customerInfo?.lastName || ""}`.trim(),
             email: customerInfo?.email || "", phone: customerInfo?.phone || "",
             shippingAddress: customerInfo?.shippingAddress || customerInfo?.address || {},
             billingAddress: customerInfo?.billingAddress || customerInfo?.address || {},
+            sellerAddress: sellerDetails.sellerAddress,
+            sellerPhone: sellerDetails.sellerPhone,
+            sellerEmail: sellerDetails.sellerEmail,
+            businessName: sellerDetails.businessName,
             customerInfo: customerInfo,
             gstNumber: customerInfo?.gstNumber || null,
-            businessName: customerInfo?.businessName || null,
             items: cartItems || [],
             total: amount || 0, paymentMethod: "RAZORPAY", paymentId: razorpay_payment_id,
             estimatedShippingCharge: customerInfo?.estimatedShippingCharge || 0,
@@ -135,20 +140,24 @@ const codOrder = async (req, res) => {
         const { cartItems, customerInfo, amount, uid, platformFeeBreakdown, couponDiscount, effectivePlatformFee } = req.body;
         const orderId = "OD" + Date.now();
         const resolvedSellerId = (cartItems || []).find(i => i?.sellerId)?.sellerId || null;
+        const sellerDetails = await resolveSellerDetails(resolvedSellerId, cartItems);
 
         const orderData = {
             orderId,
             uid: uid || "guest",
             userId: uid || "guest",
-            sellerId: resolvedSellerId,
+            sellerId: sellerDetails.sellerId || resolvedSellerId,
             customerName: `${customerInfo?.firstName || ""} ${customerInfo?.lastName || ""}`.trim(),
             email: customerInfo?.email || "",
             phone: customerInfo?.phone || "",
             shippingAddress: customerInfo?.shippingAddress || customerInfo?.address || {},
             billingAddress: customerInfo?.billingAddress || customerInfo?.address || {},
+            sellerAddress: sellerDetails.sellerAddress,
+            sellerPhone: sellerDetails.sellerPhone,
+            sellerEmail: sellerDetails.sellerEmail,
+            businessName: sellerDetails.businessName,
             customerInfo: customerInfo,
             gstNumber: customerInfo?.gstNumber || null,
-            businessName: customerInfo?.businessName || null,
             items: cartItems || [],
             total: amount || 0,
             estimatedShippingCharge: customerInfo?.estimatedShippingCharge || 0,

@@ -36,7 +36,25 @@ class ShiprocketOrderService {
       // Resolve valid pickup location dynamically
       let validPickupLocation = 'Primary'; // default
 
-      if (orderData.sellerId) {
+      if (orderData.sellerId && orderData.sellerAddress) {
+        validPickupLocation = `Seller_${orderData.sellerId}`;
+        // Auto-register seller warehouse dynamically with Shiprocket
+        try {
+          await this.createPickupAddress({
+            pickup_location: validPickupLocation,
+            name: orderData.businessName || `Seller_${orderData.sellerId}`,
+            email: orderData.sellerEmail || process.env.STORE_EMAIL || 'seller@goodkart.com',
+            phone: orderData.sellerPhone || process.env.STORE_PHONE || '9999999999',
+            address: orderData.sellerAddress.addressLine || process.env.STORE_ADDRESS || 'Warehouse Address',
+            city: orderData.sellerAddress.city || process.env.STORE_CITY || 'Bangalore',
+            state: orderData.sellerAddress.state || process.env.STORE_STATE || 'Karnataka',
+            country: 'India',
+            pin_code: orderData.sellerAddress.pincode || process.env.STORE_PINCODE || '560100'
+          });
+        } catch (spWhErr) {
+          console.log(`[Shiprocket] Pickup registration note for "${validPickupLocation}":`, spWhErr.message);
+        }
+      } else if (orderData.sellerId) {
         validPickupLocation = `Seller_${orderData.sellerId}`;
       } else {
         try {
@@ -62,13 +80,13 @@ class ShiprocketOrderService {
       }
 
       // Split customer name into first and last name
-      const nameParts = orderData.customerName.trim().split(' ');
-      const firstName = nameParts[0] || '';
+      const nameParts = (orderData.customerName || 'Customer').trim().split(' ');
+      const firstName = nameParts[0] || 'Customer';
       const lastName = nameParts.slice(1).join(' ') || '';
 
       // Use billing address for billing details, shipping address for delivery
-      const billingAddr = orderData.billingAddress || orderData.shippingAddress;
-      const shippingAddr = orderData.shippingAddress;
+      const billingAddr = orderData.billingAddress || orderData.shippingAddress || {};
+      const shippingAddr = orderData.shippingAddress || {};
 
       // Map order data to Shiprocket API format
       const shiprocketPayload = {
@@ -77,14 +95,23 @@ class ShiprocketOrderService {
         pickup_location: validPickupLocation,
         billing_customer_name: firstName,
         billing_last_name: lastName,
-        billing_address: billingAddr.addressLine,
-        billing_city: billingAddr.city,
-        billing_pincode: billingAddr.pincode,
+        billing_address: billingAddr.addressLine || billingAddr.addressLine1 || billingAddr.address || 'Address',
+        billing_city: billingAddr.city || 'Bangalore',
+        billing_pincode: billingAddr.pincode || '560100',
         billing_state: billingAddr.state || 'Karnataka',
         billing_country: billingAddr.country || 'India',
-        billing_email: orderData.customerEmail,
-        billing_phone: orderData.customerPhone,
+        billing_email: orderData.customerEmail || orderData.email || 'customer@goodkart.in',
+        billing_phone: orderData.customerPhone || orderData.phone || billingAddr.phone || '9999999999',
         shipping_is_billing: (billingAddr === shippingAddr),
+        shipping_customer_name: firstName,
+        shipping_last_name: lastName,
+        shipping_address: shippingAddr.addressLine || shippingAddr.addressLine1 || shippingAddr.address || 'Address',
+        shipping_city: shippingAddr.city || 'Bangalore',
+        shipping_pincode: shippingAddr.pincode || '560100',
+        shipping_state: shippingAddr.state || 'Karnataka',
+        shipping_country: shippingAddr.country || 'India',
+        shipping_email: orderData.customerEmail || orderData.email || 'customer@goodkart.in',
+        shipping_phone: shippingAddr.phone || orderData.customerPhone || orderData.phone || '9999999999',
         order_items: orderData.items.map(item => ({
           name: item.name,
           sku: item.sku || item.id || 'SKU-' + item.id,
