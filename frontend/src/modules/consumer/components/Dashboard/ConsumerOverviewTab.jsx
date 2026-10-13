@@ -4,6 +4,7 @@ import {
     RotateCcw, Bookmark
 } from 'lucide-react';
 import PriceDisplay from '@/modules/shared/components/common/PriceDisplay';
+import { getProductPricingWithGST } from '@/modules/shared/utils/priceUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const formatDate = (timestamp) => {
@@ -19,6 +20,18 @@ const formatDate = (timestamp) => {
         return 'Invalid Date';
     } catch { return 'Invalid Date'; }
 };
+
+// Unit price the customer was actually charged for an order line (GST-inclusive selling price).
+// `item.price` on an order line is the product's raw list/MRP field, NOT the amount charged,
+// so it must not be shown as the item's amount.
+const getChargedUnitPrice = (item) => {
+    if (!item) return 0;
+    const stored = Number(item.priceWithGST);
+    if (stored > 0) return stored;
+    const { finalPrice } = getProductPricingWithGST(item, item.selections || {});
+    return finalPrice > 0 ? finalPrice : (Number(item.price) || 0);
+};
+const inr = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
 export default function ConsumerOverviewTab({
     stats, orders, selectedOrder, setSelectedOrder,
@@ -147,10 +160,10 @@ export default function ConsumerOverviewTab({
                                     {recentlyViewed.map((product) => (
                                         <div key={product.id} className="group cursor-pointer" onClick={() => navigate(`/product/${product.id}`)}>
                                             <div className="aspect-square bg-gray-100 rounded-lg mb-2 overflow-hidden">
-                                                <img src={product.imageUrl || product.image || '/placeholder.png'} alt={product.name}
+                                                <img src={product.imageUrl || product.image || '/placeholder.png'} alt={product.name || product.title}
                                                     className="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform" />
                                             </div>
-                                            <p className="text-xs text-gray-700 font-medium truncate">{product.name}</p>
+                                            <p className="text-xs text-gray-700 font-medium truncate">{product.name || product.title}</p>
                                             <div className="flex items-center justify-between mt-1">
                                                 <PriceDisplay product={product} size="xs" showGSTIndicator={false} />
                                             </div>
@@ -182,10 +195,10 @@ export default function ConsumerOverviewTab({
                                     {recommendedProducts.map((product) => (
                                         <div key={product.id} className="group cursor-pointer" onClick={() => navigate(`/product/${product.id}`)}>
                                             <div className="aspect-square bg-gray-100 rounded-lg mb-2 overflow-hidden">
-                                                <img src={product.imageUrl || product.image || '/placeholder.png'} alt={product.name}
+                                                <img src={product.imageUrl || product.image || '/placeholder.png'} alt={product.name || product.title}
                                                     className="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform" />
                                             </div>
-                                            <p className="text-xs text-gray-700 font-medium truncate">{product.name}</p>
+                                            <p className="text-xs text-gray-700 font-medium truncate">{product.name || product.title}</p>
                                             <div className="flex items-center justify-between mt-1">
                                                 <PriceDisplay product={product} size="xs" showGSTIndicator={false} />
                                             </div>
@@ -308,12 +321,26 @@ export default function ConsumerOverviewTab({
                                             <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-bold text-gray-900 truncate leading-tight">{item.name}</p>
-                                                    <p className="text-xs text-gray-500 leading-tight mt-0.5">Qty: {item.quantity} × ₹{item.price}</p>
+                                                    <p className="text-xs text-gray-500 leading-tight mt-0.5">Qty: {item.quantity} × ₹{inr(getChargedUnitPrice(item))}</p>
                                                 </div>
-                                                <p className="text-sm font-black text-primary ml-3">₹{(item.price * item.quantity).toLocaleString()}</p>
+                                                <p className="text-sm font-black text-primary ml-3">₹{inr(getChargedUnitPrice(item) * (item.quantity || 1))}</p>
                                             </div>
                                         ))}
                                     </div>
+                                    {(() => {
+                                        const itemsSubtotal = selectedOrder.items.reduce((s, it) => s + getChargedUnitPrice(it) * (it.quantity || 1), 0);
+                                        const orderTotal = Number(selectedOrder.total) || 0;
+                                        const other = Math.round((orderTotal - itemsSubtotal) * 100) / 100;
+                                        return (
+                                            <div className="mt-2 space-y-1 text-xs text-gray-500">
+                                                <div className="flex justify-between"><span>Items subtotal</span><span>₹{inr(itemsSubtotal)}</span></div>
+                                                {other !== 0 && (
+                                                    <div className="flex justify-between"><span>Platform fee, taxes &amp; shipping</span><span>{other > 0 ? '' : '-'}₹{inr(Math.abs(other))}</span></div>
+                                                )}
+                                                <div className="flex justify-between text-sm font-bold text-gray-900 pt-1 border-t border-gray-200"><span>Order Total</span><span>₹{inr(orderTotal)}</span></div>
+                                            </div>
+                                        );
+                                    })()}
                                 </motion.div>
                             )}
 

@@ -440,6 +440,13 @@ export default function Navbar({ onLogoClick }) {
             const row = subNavRowRef.current;
             if (!row || catMeasureRefs.current.length === 0) return;
 
+            // On phones the category row is a swipeable strip (see Navbar.css), so keep every
+            // category inline instead of cutting the row off and hiding the rest under "More".
+            if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+                setVisibleCatCount(fittableCategories.length);
+                return;
+            }
+
             const rowStyle = window.getComputedStyle(row);
             const gap = parseFloat(rowStyle.columnGap || rowStyle.gap) || 8;
             const containerWidth = row.clientWidth;

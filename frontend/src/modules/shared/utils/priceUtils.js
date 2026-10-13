@@ -99,11 +99,29 @@ export const getProductPricing = (product, selections = {}) => {
         return 0;
     };
     const defaultOffset = (list) => (Array.isArray(list) && list.length > 0 ? offsetOf(list[0]) : 0);
-    const storageOffset = offsetOf(selections.storage) - defaultOffset(product.storage);
-    const memoryOffset = offsetOf(selections.memory) - defaultOffset(product.memory);
+    // Resolve a selection to its price offset. A MISSING selection (e.g. a product card,
+    // "Recently Viewed" or "Recommended" item that has no variant picked) means the DEFAULT
+    // (first) variant, so it must add no offset. Previously a missing selection counted as 0
+    // while the default offset was still subtracted, which produced wrong / negative prices
+    // such as "₹-59,001" for products whose first variant has a price offset.
+    // A selection saved as a plain label string is looked up in the variant list.
+    const selectionOffset = (selection, list) => {
+        if (selection === undefined || selection === null || selection === '') return defaultOffset(list);
+        if (typeof selection === 'object') return offsetOf(selection);
+        if (Array.isArray(list)) {
+            const match = list.find(v => v && typeof v === 'object' && v.label === selection);
+            if (match) return offsetOf(match);
+        }
+        return defaultOffset(list);
+    };
+    const storageOffset = selectionOffset(selections.storage, product.storage) - defaultOffset(product.storage);
+    const memoryOffset = selectionOffset(selections.memory, product.memory) - defaultOffset(product.memory);
     const totalOffset = storageOffset + memoryOffset;
 
     let finalSellingPrice = baseSellingPrice + totalOffset;
+    // Safety net: a selling price can never be zero/negative. If variant offsets would make it so
+    // (bad seller data), fall back to the base selling price instead of showing a negative amount.
+    if (finalSellingPrice <= 0) finalSellingPrice = baseSellingPrice;
     // CRITICAL: MRP (crossed price) NEVER gets offsets added - it stays constant
     let finalOriginalPrice = constantMRP;
 
